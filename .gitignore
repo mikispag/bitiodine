@@ -1,0 +1,10 @@
+*.sqlite*
+__pycache__
+*.pyc
+*.dat
+*.dot
+*.o
+*.d
+.DS_Store
+*~
+deploy.sh
