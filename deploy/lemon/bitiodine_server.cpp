@@ -46,7 +46,7 @@ SmartDigraph::Node genesis = INVALID;
 SmartDigraph::NodeMap<string> address(g);
 SmartDigraph::ArcMap<string> tx_hash(g);
 
-vector<string> tokenize(string const& input)
+vector<string> tokenize(string const &input)
 {
     istringstream str(input);
     istream_iterator<string> cur(str), end;
@@ -373,16 +373,18 @@ void do_command(char *command_c, int client)
 
         if (!successors.empty())
         {
-            for (auto itr = successors.begin(); itr != successors.end(); ++itr) {
+            for (auto itr = successors.begin(); itr != successors.end(); ++itr)
+            {
                 output += (*itr) + ",";
             }
 
-            server_send(client, output.substr(0, output.size()-1) + "\n");
+            server_send(client, output.substr(0, output.size() - 1) + "\n");
         }
         else
             server_send(client, "500 No successors.\n");
         return;
-    } else if (tokens[0] == "PREDECESSORS")
+    }
+    else if (tokens[0] == "PREDECESSORS")
     {
         if (tokens.size() < 2)
         {
@@ -394,16 +396,22 @@ void do_command(char *command_c, int client)
 
         if (!predecessors.empty())
         {
-            for (auto itr = predecessors.begin(); itr != predecessors.end(); ++itr) {
+            for (auto itr = predecessors.begin(); itr != predecessors.end(); ++itr)
+            {
                 output += (*itr) + ",";
             }
 
-            server_send(client, output.substr(0, output.size()-1) + "\n");
+            server_send(client, output.substr(0, output.size() - 1) + "\n");
         }
         else
             server_send(client, "500 No predecessors.\n");
         return;
-    } else
+    }
+    else if (tokens[0] == "QUIT")
+    {
+        exit(0);
+    }
+    else
     {
         server_send(client, "404 COMMAND NOT FOUND\n");
     }
