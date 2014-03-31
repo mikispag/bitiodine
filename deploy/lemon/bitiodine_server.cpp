@@ -77,7 +77,7 @@ int main()
     cerr << "Number of nodes: " << countNodes(g) << endl;
     cerr << "Number of arcs: " << countArcs(g) << endl;
 
-    io::CSVReader<3> in("../clusterizer/clusters.csv");
+    io::CSVReader<2> in("../clusterizer/clusters.csv");
     in.read_header(io::ignore_extra_column, "address", "cluster");
     string address; int cluster;
     while (in.read_row(address, cluster))
