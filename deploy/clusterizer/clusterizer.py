@@ -142,6 +142,7 @@ if options.load or options.csv:
 	if options.csv:
 		with open("clusters.csv", "w") as f:
 			writer = csv.writer(f)
+			writer.writerow(["address", "cluster"])
 			for address, cluster in users.items():
 				writer.writerow([address, cluster])
 		sys.exit(0)
