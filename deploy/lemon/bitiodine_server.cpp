@@ -82,7 +82,7 @@ int main()
     string address; int cluster;
     while (in.read_row(address, cluster))
     {
-        clusters.insert(make_pair<string, int>(address, cluster));
+        clusters.insert(make_pair(address, cluster));
     }
 
     int server_fd = server_start_listen();
@@ -106,9 +106,9 @@ void print_cluster(int client, int cluster)
 
     for (auto &it : clusters)
     {
-        if (it->second == cluster)
+        if (it.second == cluster)
         {
-            server_send(client, it->first + "\n");
+            server_send(client, it.first + "\n");
         }
     }
 
@@ -460,7 +460,14 @@ void do_command(char *command_c, int client)
             return;
         }
 
-        print_cluster(client, tokens[1]);
+        try
+        {
+            print_cluster(client, stoi(tokens[1]));
+        }
+        catch (std::invalid_argument e)
+        {
+            server_send(client, "500 Arguments error.\n");
+        }
 
         return;
     }
