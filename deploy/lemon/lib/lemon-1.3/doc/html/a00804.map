@@ -1,0 +1,9 @@
+<map id="Exception" name="Exception">
+<area shape="rect" id="node5" href="$a00033.html" title="ArgParserException" alt="" coords="269,5,405,32"/>
+<area shape="rect" id="node7" href="$a00231.html" title="This exception is thrown when the license check is not sufficient." alt="" coords="291,56,384,83"/>
+<area shape="rect" id="node9" href="$a00166.html" title="Format error." alt="" coords="292,107,383,133"/>
+<area shape="rect" id="node11" href="$a00214.html" title="Input&#45;Output error." alt="" coords="308,157,367,184"/>
+<area shape="rect" id="node13" href="$a00428.html" title="Unsupported file format exception." alt="" coords="256,208,419,235"/>
+<area shape="rect" id="node15" href="$a00306.html" title="Exception thrown by RadixHeap." alt="" coords="264,259,411,285"/>
+<area shape="rect" id="node2" href="libstdc++.tag$a00659.html" title="STL class." alt="" coords="6,132,82,159"/>
+</map>

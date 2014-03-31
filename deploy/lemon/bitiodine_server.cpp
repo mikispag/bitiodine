@@ -10,6 +10,7 @@
 #include <list>
 #include <iterator>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 #include <errno.h>
 #include <unistd.h>
@@ -17,6 +18,7 @@
 #include <lemon/lgf_reader.h>
 #include <lemon/path.h>
 #include <lemon/smart_graph.h>
+#include "csv.h"
 
 using namespace lemon;
 using namespace std;
@@ -46,6 +48,8 @@ SmartDigraph::Node genesis = INVALID;
 SmartDigraph::NodeMap<string> address(g);
 SmartDigraph::ArcMap<string> tx_hash(g);
 
+unordered_map<string, int> clusters;
+
 vector<string> tokenize(string const &input)
 {
     istringstream str(input);
@@ -73,6 +77,14 @@ int main()
     cerr << "Number of nodes: " << countNodes(g) << endl;
     cerr << "Number of arcs: " << countArcs(g) << endl;
 
+    io::CSVReader<3> in("../clusterizer/clusters.csv");
+    in.read_header(io::ignore_extra_column, "address", "cluster");
+    string address; int cluster;
+    while (in.read_row(address, cluster))
+    {
+        clusters.insert(make_pair<string, int>(address, cluster));
+    }
+
     int server_fd = server_start_listen();
 
     cerr << "Server started." << endl;
@@ -88,6 +100,20 @@ int main()
     return 0;
 }
 
+void print_cluster(int client, int cluster)
+{
+    server_send(client, "BEGIN\n");
+
+    for (auto &it : clusters)
+    {
+        if (it->second == cluster)
+        {
+            server_send(client, it->first + "\n");
+        }
+    }
+
+    server_send(client, "END\n");
+}
 
 string find_path(string from, string to)
 {
@@ -357,17 +383,26 @@ void do_command(char *command_c, int client)
         output = find_path(tokens[1], tokens[2]);
 
         if (output != "")
+        {
+            server_send(client, "BEGIN\n");
             server_send(client, output);
+            server_send(client, "END\n");
+        }
         else
+        {
             server_send(client, "500 No path.\n");
+        }
         return;
-    } else if (tokens[0] == "SUCCESSORS")
+    }
+    else if (tokens[0] == "SUCCESSORS")
     {
         if (tokens.size() < 2)
         {
             server_send(client, "500 Arguments error.\n");
             return;
         }
+
+        server_send(client, "BEGIN\n");
 
         unordered_set<string> successors = find_successors(tokens[1]);
 
@@ -379,6 +414,7 @@ void do_command(char *command_c, int client)
             }
 
             server_send(client, output.substr(0, output.size() - 1) + "\n");
+            server_send(client, "END\n");
         }
         else
             server_send(client, "500 No successors.\n");
@@ -392,6 +428,8 @@ void do_command(char *command_c, int client)
             return;
         }
 
+        server_send(client, "BEGIN\n");
+
         unordered_set<string> predecessors = find_predecessors(tokens[1]);
 
         if (!predecessors.empty())
@@ -402,6 +440,7 @@ void do_command(char *command_c, int client)
             }
 
             server_send(client, output.substr(0, output.size() - 1) + "\n");
+            server_send(client, "END\n");
         }
         else
             server_send(client, "500 No predecessors.\n");
@@ -410,6 +449,46 @@ void do_command(char *command_c, int client)
     else if (tokens[0] == "QUIT")
     {
         exit(0);
+    }
+    else if (tokens[0] == "PRINT_CLUSTER")
+    {
+        int cluster;
+
+        if (tokens.size() < 2)
+        {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        print_cluster(client, tokens[1]);
+
+        return;
+    }
+    else if (tokens[0] == "PRINT_NEIGHBORS")
+    {
+        int cluster;
+
+        if (tokens.size() < 2)
+        {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        unordered_map<string, int>::const_iterator got = clusters.find(tokens[1]);
+
+        if (got == clusters.end())
+        {
+            server_send(client, "500 Address not present in any cluster.\n");
+            return;
+        }
+        else
+        {
+            cluster = got->second;
+        }
+
+        print_cluster(client, cluster);
+
+        return;
     }
     else
     {
