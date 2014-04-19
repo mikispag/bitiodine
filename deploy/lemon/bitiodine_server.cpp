@@ -140,9 +140,7 @@ string find_path(string from, string to)
     ostringstream oss;
 
     /* Check for cached response in Redis */
-    redisReply *reply;
-
-    reply = redisCommand(ctx, "GET %s:%s", from, to);
+    redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
     string redis_reply = getRedisString(reply);
     if (!redis_reply.empty())
     {
@@ -200,10 +198,10 @@ string find_path(string from, string to)
 
     /* Cache response in Redis */
     /* Set the key */
-    redisCommand(ctx, "SET %s:%s %s", from, to, path);
+    redisCommand(ctx, "SET %s:%s %s", from.c_str(), to.c_str(), path.c_str());
 
     /* Put a 24h expiration to the key */
-    redisCommand(ctx, "EXPIRE %s:%s 86400", from, to);
+    redisCommand(ctx, "EXPIRE %s:%s 86400", from.c_str(), to.c_str());
 
     return path;
 }

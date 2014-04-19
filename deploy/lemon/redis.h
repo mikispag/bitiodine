@@ -33,11 +33,13 @@ void displayRedisReply(redisReply *reply)
     }
 }
 
-string getRedisString(redisReply *reply)
+std::string getRedisString(redisReply *reply)
 {
+    std::string redisString;
+
     if (reply->type == REDIS_REPLY_STRING)
     {
-        string redisString = reply->str;
+        redisString = reply->str;
     }
     else return "";
 
