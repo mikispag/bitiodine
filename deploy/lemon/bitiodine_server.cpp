@@ -212,6 +212,16 @@ unordered_set<string> find_successors(string from)
     SmartDigraph::Node s = INVALID;
     unordered_set<string> successors;
 
+    /* Check for cached response in Redis */
+    redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
+    string redis_reply = getRedisString(reply);
+    if (!redis_reply.empty())
+    {
+        cerr << "Returning cached response for S_" << from << endl;
+        successors.insert(redis_reply);
+        return successors;
+    }
+
     for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n)
     {
         if (address[n] == from)
@@ -230,6 +240,16 @@ unordered_set<string> find_predecessors(string from)
 {
     SmartDigraph::Node s = INVALID;
     unordered_set<string> predecessors;
+
+    /* Check for cached response in Redis */
+    redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
+    string redis_reply = getRedisString(reply);
+    if (!redis_reply.empty())
+    {
+        cerr << "Returning cached response for P_" << from << endl;
+        predecessors.insert(redis_reply);
+        return predecessors;
+    }
 
     for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n)
     {
@@ -446,8 +466,17 @@ void do_command(char *command_c, int client)
                 output += (*itr) + ",";
             }
 
-            server_send(client, output.substr(0, output.size() - 1) + "\n");
+            output = output.substr(0, output.size() - 1) + "\n";
+
+            server_send(client, output);
             server_send(client, "END\n");
+
+            /* Cache response in Redis */
+            /* Set the key */
+            redisCommand(ctx, "SET S_%s %s", tokens[1].c_str(), output.c_str());
+
+            /* Put a 24h expiration to the key */
+            redisCommand(ctx, "EXPIRE S_%s 86400", tokens[1].c_str());
         }
         else
             server_send(client, "500 No successors.\n");
@@ -472,16 +501,21 @@ void do_command(char *command_c, int client)
                 output += (*itr) + ",";
             }
 
-            server_send(client, output.substr(0, output.size() - 1) + "\n");
+            output = output.substr(0, output.size() - 1) + "\n";
+
+            server_send(client, output);
             server_send(client, "END\n");
+
+            /* Cache response in Redis */
+            /* Set the key */
+            redisCommand(ctx, "SET P_%s %s", tokens[1].c_str(), output.c_str());
+
+            /* Put a 24h expiration to the key */
+            redisCommand(ctx, "EXPIRE P_%s 86400", tokens[1].c_str());
         }
         else
             server_send(client, "500 No predecessors.\n");
         return;
-    }
-    else if (tokens[0] == "QUIT")
-    {
-        exit(0);
     }
     else if (tokens[0] == "PRINT_CLUSTER")
     {
@@ -529,6 +563,10 @@ void do_command(char *command_c, int client)
         print_cluster(client, cluster);
 
         return;
+    }
+    else if (tokens[0] == "QUIT")
+    {
+        exit(0);
     }
     else
     {
