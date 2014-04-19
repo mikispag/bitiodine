@@ -13,5 +13,5 @@ Dependencies
 On Ubuntu:
 
 ```bash
-apt-get install libssl-dev cmake build-essential g++-4.4 libdb++-dev libboost-all-dev libsparsehash-dev git-core perl sqlite3 python3-numpy python3-simplejson python3-networkx
+apt-get install libssl-dev cmake build-essential g++-4.4 libdb++-dev libboost-all-dev libsparsehash-dev git-core perl sqlite3 python3-numpy python3-simplejson python3-networkx libhiredis-dev
 ```
