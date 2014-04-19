@@ -19,6 +19,7 @@
 #include <lemon/path.h>
 #include <lemon/smart_graph.h>
 #include "csv.h"
+#include "redis.h"
 
 using namespace lemon;
 using namespace std;
@@ -29,6 +30,10 @@ int server_establish_connection(int server_fd);
 int server_send(int fd, string data);
 void *tcp_server_read(void *arg);
 void mainloop(int server_fd);
+
+void redisDisconnect(redisContext *ctx);
+void displayRedisReply(redisReply *reply);
+string getRedisString(redisReply *reply);
 
 // Server constants
 const char *PORT = "8888";      // port numbers 1-1024 are probably reserved by your OS
@@ -48,6 +53,8 @@ SmartDigraph::Node genesis = INVALID;
 SmartDigraph::NodeMap<string> address(g);
 SmartDigraph::ArcMap<string> tx_hash(g);
 
+redisContext *ctx;
+
 unordered_map<string, int> clusters;
 
 vector<string> tokenize(string const &input)
@@ -61,6 +68,14 @@ int main()
 {
     try
     {
+        ctx = redisConnect("127.0.0.1", 6379);
+
+        if (ctx->err)
+        {
+            printf("Error: %s\n", ctx->errstr);
+            return -1;
+        }
+
         digraphReader(g, "../grapher/tx_graph.lgf").  // read the directed graph into g
         arcMap("tx_hash", tx_hash).                   // read the 'tx_hash' arc map into tx_hash
         nodeMap("label", address).
@@ -97,6 +112,7 @@ int main()
 
     mainloop(server_fd);
 
+    redisDisconnect(ctx);
     return 0;
 }
 
@@ -122,6 +138,16 @@ string find_path(string from, string to)
 
     int d;
     ostringstream oss;
+
+    /* Check for cached response in Redis */
+    redisReply *reply;
+
+    reply = redisCommand(ctx, "GET %s:%s", from, to);
+    string redis_reply = getRedisString(reply);
+    if (!redis_reply.empty())
+    {
+        return redis_reply;
+    }
 
     for (SmartDigraph::NodeIt n(g); (s == INVALID || t == INVALID) && n != INVALID; ++n)
     {
@@ -170,8 +196,16 @@ string find_path(string from, string to)
     }
 
     oss << endl;
+    string path = oss.str();
 
-    return oss.str();
+    /* Cache response in Redis */
+    /* Set the key */
+    redisCommand(ctx, "SET %s:%s %s", from, to, path);
+
+    /* Put a 24h expiration to the key */
+    redisCommand(ctx, "EXPIRE %s:%s 86400", from, to);
+
+    return path;
 }
 
 unordered_set<string> find_successors(string from)
