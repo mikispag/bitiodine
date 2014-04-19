@@ -298,7 +298,7 @@ int server_start_listen()
     if (ret != 0)
     {
         cerr << "Error:" << strerror(errno) << endl;
-        return -1 ;
+        return -1;
     }
 
     ret = listen(server_fd, BACKLOG);
@@ -317,7 +317,7 @@ int server_establish_connection(int server_fd)
     int port;
 
     int new_sd;
-    struct sockaddr_storage remote_info ;
+    struct sockaddr_storage remote_info;
     socklen_t addr_size;
 
     addr_size = sizeof(addr_size);
@@ -361,7 +361,7 @@ void *tcp_server_read(void *arg)
         buflen = read(rfd, buf, sizeof(buf));
         if (buflen <= 0)
         {
-            cerr << "Client disconnected. Clearing fd " << rfd << endl ;
+            cerr << "Client disconnected. Clearing fd " << rfd << endl;
             pthread_mutex_lock(&mutex_state);
             FD_CLR(rfd, &the_state);
             pthread_mutex_unlock(&mutex_state);
@@ -435,7 +435,7 @@ void do_command(char *command_c, int client)
 
         output = find_path(tokens[1], tokens[2]);
 
-        if (output != "")
+        if (!output.empty())
         {
             server_send(client, "BEGIN\n");
             server_send(client, output);
