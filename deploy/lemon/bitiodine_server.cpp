@@ -466,9 +466,9 @@ void do_command(char *command_c, int client)
                 output += (*itr) + ",";
             }
 
-            output = output.substr(0, output.size() - 1) + "\n";
+            output = output.substr(0, output.size() - 1);
 
-            server_send(client, output);
+            server_send(client, output + "\n");
             server_send(client, "END\n");
 
             /* Cache response in Redis */
@@ -501,9 +501,9 @@ void do_command(char *command_c, int client)
                 output += (*itr) + ",";
             }
 
-            output = output.substr(0, output.size() - 1) + "\n";
+            output = output.substr(0, output.size() - 1);
 
-            server_send(client, output);
+            server_send(client, output + "\n");
             server_send(client, "END\n");
 
             /* Cache response in Redis */
