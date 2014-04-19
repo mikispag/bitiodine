@@ -144,6 +144,7 @@ string find_path(string from, string to)
     string redis_reply = getRedisString(reply);
     if (!redis_reply.empty())
     {
+        cerr << "Returning cached response for " << from << ":" << to << endl;
         return redis_reply;
     }
 
