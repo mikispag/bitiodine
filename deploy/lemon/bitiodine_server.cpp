@@ -216,6 +216,7 @@ unordered_set<string> find_successors(string from)
     unordered_set<string> successors;
 
     string redis_reply = "";
+    string output = "";
 
     redisContext *ctx;
     ctx = redisConnect("127.0.0.1", 6379);
@@ -315,7 +316,7 @@ unordered_set<string> find_predecessors(string from)
 
     for (auto &it : predecessors)
     {
-        output += (*it) + ",";
+        output += it + ",";
     }
 
     output = output.substr(0, output.size() - 1);
@@ -514,7 +515,7 @@ void do_command(char *command_c, int client)
         {
             for (auto &it : successors)
             {
-                output += (*it) + ",";
+                output += it + ",";
             }
 
             output = output.substr(0, output.size() - 1);
@@ -542,7 +543,7 @@ void do_command(char *command_c, int client)
         {
             for (auto &it : predecessors)
             {
-                output += (*it) + ",";
+                output += it + ",";
             }
 
             output = output.substr(0, output.size() - 1);
