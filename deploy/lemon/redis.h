@@ -13,7 +13,6 @@ std::string getRedisString(redisReply *reply, redisContext *ctx)
     if (reply && reply->type == REDIS_REPLY_STRING)
     {
         redisString = reply->str;
-        redisFree(ctx);
     }
     else return "";
 
