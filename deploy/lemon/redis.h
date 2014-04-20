@@ -8,6 +8,11 @@ void redisDisconnect(redisContext *ctx)
 
 void displayRedisReply(redisReply *reply)
 {
+
+    if (!reply) {
+        return;
+    }
+
     switch (reply->type)
     {
     case REDIS_REPLY_STATUS:
@@ -37,7 +42,7 @@ std::string getRedisString(redisReply *reply)
 {
     std::string redisString;
 
-    if (reply->type == REDIS_REPLY_STRING)
+    if (reply && reply->type == REDIS_REPLY_STRING)
     {
         redisString = reply->str;
     }
