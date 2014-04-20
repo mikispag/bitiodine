@@ -50,8 +50,6 @@ SmartDigraph::Node genesis = INVALID;
 SmartDigraph::NodeMap<string> address(g);
 SmartDigraph::ArcMap<string> tx_hash(g);
 
-redisContext *ctx;
-
 unordered_map<string, int> clusters;
 
 vector<string> tokenize(string const &input)
@@ -65,14 +63,6 @@ int main()
 {
     try
     {
-        ctx = redisConnect("127.0.0.1", 6379);
-
-        if (ctx->err)
-        {
-            printf("Error: %s\n", ctx->errstr);
-            return -1;
-        }
-
         digraphReader(g, "../grapher/tx_graph.lgf").  // read the directed graph into g
         arcMap("tx_hash", tx_hash).                   // read the 'tx_hash' arc map into tx_hash
         nodeMap("label", address).
@@ -108,8 +98,6 @@ int main()
     }
 
     mainloop(server_fd);
-
-    redisDisconnect(ctx);
     return 0;
 }
 
@@ -135,10 +123,23 @@ string find_path(string from, string to)
 
     int d;
     ostringstream oss;
+    string redis_reply = "";
+
+    redisContext *ctx;
+    ctx = redisConnect("127.0.0.1", 6379);
+
+    if (ctx->err)
+    {
+        cerr << "Error: " << ctx->errstr << endl;
+    }
 
     /* Check for cached response in Redis */
-    redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
-    string redis_reply = getRedisString(reply);
+    if (ctx)
+    {
+        redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
+        redis_reply = getRedisString(reply);
+    }
+
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for " << from << ":" << to << endl;
@@ -201,6 +202,11 @@ string find_path(string from, string to)
     /* Put a 24h expiration to the key */
     redisCommand(ctx, "EXPIRE %s:%s 86400", from.c_str(), to.c_str());
 
+    if (ctx)
+    {
+        redisDisconnect(ctx);
+    }
+
     return path;
 }
 
@@ -209,9 +215,23 @@ unordered_set<string> find_successors(string from)
     SmartDigraph::Node s = INVALID;
     unordered_set<string> successors;
 
+    string redis_reply = "";
+
+    redisContext *ctx;
+    ctx = redisConnect("127.0.0.1", 6379);
+
+    if (ctx->err)
+    {
+        cerr << "Error: " << ctx->errstr << endl;
+    }
+
     /* Check for cached response in Redis */
-    redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
-    string redis_reply = getRedisString(reply);
+    if (ctx)
+    {
+        redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
+        redis_reply = getRedisString(reply);
+    }
+
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for S_" << from << endl;
@@ -230,6 +250,25 @@ unordered_set<string> find_successors(string from)
         successors.insert(address[g.target(a)]);
     }
 
+    for (auto &it : successors)
+    {
+        output += (*it) + ",";
+    }
+
+    output = output.substr(0, output.size() - 1);
+
+    /* Cache response in Redis */
+    /* Set the key */
+    redisCommand(ctx, "SET S_%s %s", from.c_str(), output.c_str());
+
+    /* Put a 24h expiration to the key */
+    redisCommand(ctx, "EXPIRE S_%s 86400", from.c_str());
+
+    if (ctx)
+    {
+        redisDisconnect(ctx);
+    }
+
     return successors;
 }
 
@@ -238,9 +277,24 @@ unordered_set<string> find_predecessors(string from)
     SmartDigraph::Node s = INVALID;
     unordered_set<string> predecessors;
 
+    string redis_reply = "";
+    string output = "";
+
+    redisContext *ctx;
+    ctx = redisConnect("127.0.0.1", 6379);
+
+    if (ctx->err)
+    {
+        cerr << "Error: " << ctx->errstr << endl;
+    }
+
     /* Check for cached response in Redis */
-    redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
-    string redis_reply = getRedisString(reply);
+    if (ctx)
+    {
+        redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
+        redis_reply = getRedisString(reply);
+    }
+
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for P_" << from << endl;
@@ -257,6 +311,25 @@ unordered_set<string> find_predecessors(string from)
     for (SmartDigraph::InArcIt a(g, s); a != INVALID && s != INVALID; ++a)
     {
         predecessors.insert(address[g.source(a)]);
+    }
+
+    for (auto &it : predecessors)
+    {
+        output += (*it) + ",";
+    }
+
+    output = output.substr(0, output.size() - 1);
+
+    /* Cache response in Redis */
+    /* Set the key */
+    redisCommand(ctx, "SET P_%s %s", from.c_str(), output.c_str());
+
+    /* Put a 24h expiration to the key */
+    redisCommand(ctx, "EXPIRE P_%s 86400", from.c_str());
+
+    if (ctx)
+    {
+        redisDisconnect(ctx);
     }
 
     return predecessors;
@@ -439,22 +512,15 @@ void do_command(char *command_c, int client)
 
         if (!successors.empty())
         {
-            for (auto itr = successors.begin(); itr != successors.end(); ++itr)
+            for (auto &it : successors)
             {
-                output += (*itr) + ",";
+                output += (*it) + ",";
             }
 
             output = output.substr(0, output.size() - 1);
 
             server_send(client, output + "\n");
             server_send(client, "END\n");
-
-            /* Cache response in Redis */
-            /* Set the key */
-            redisCommand(ctx, "SET S_%s %s", tokens[1].c_str(), output.c_str());
-
-            /* Put a 24h expiration to the key */
-            redisCommand(ctx, "EXPIRE S_%s 86400", tokens[1].c_str());
         }
         else
             server_send(client, "500 No successors.\n");
@@ -474,22 +540,15 @@ void do_command(char *command_c, int client)
 
         if (!predecessors.empty())
         {
-            for (auto itr = predecessors.begin(); itr != predecessors.end(); ++itr)
+            for (auto &it : predecessors)
             {
-                output += (*itr) + ",";
+                output += (*it) + ",";
             }
 
             output = output.substr(0, output.size() - 1);
 
             server_send(client, output + "\n");
             server_send(client, "END\n");
-
-            /* Cache response in Redis */
-            /* Set the key */
-            redisCommand(ctx, "SET P_%s %s", tokens[1].c_str(), output.c_str());
-
-            /* Put a 24h expiration to the key */
-            redisCommand(ctx, "EXPIRE P_%s 86400", tokens[1].c_str());
         }
         else
             server_send(client, "500 No predecessors.\n");
