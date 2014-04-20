@@ -33,7 +33,7 @@ void mainloop(int server_fd);
 
 void redisDisconnect(redisContext *ctx);
 void displayRedisReply(redisReply *reply);
-string getRedisString(redisReply *reply, redisContext *ctx);
+string getRedisString(redisReply *reply);
 
 // Server constants
 const char *PORT = "8888";      // port numbers 1-1024 are probably reserved by your OS
@@ -138,7 +138,7 @@ string find_path(string from, string to)
 
     /* Check for cached response in Redis */
     redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
-    string redis_reply = getRedisString(reply, ctx);
+    string redis_reply = getRedisString(reply);
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for " << from << ":" << to << endl;
@@ -211,7 +211,7 @@ unordered_set<string> find_successors(string from)
 
     /* Check for cached response in Redis */
     redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
-    string redis_reply = getRedisString(reply, ctx);
+    string redis_reply = getRedisString(reply);
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for S_" << from << endl;
@@ -240,7 +240,7 @@ unordered_set<string> find_predecessors(string from)
 
     /* Check for cached response in Redis */
     redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
-    string redis_reply = getRedisString(reply, ctx);
+    string redis_reply = getRedisString(reply);
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for P_" << from << endl;

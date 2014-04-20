@@ -6,7 +6,7 @@ void redisDisconnect(redisContext *ctx)
     redisFree(ctx);
 }
 
-std::string getRedisString(redisReply *reply, redisContext *ctx)
+std::string getRedisString(redisReply *reply)
 {
     std::string redisString;
 
