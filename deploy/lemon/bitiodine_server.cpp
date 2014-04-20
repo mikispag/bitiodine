@@ -27,23 +27,20 @@ using namespace std;
 int server_start_listen();
 void do_command(char *command, int client);
 int server_establish_connection(int server_fd);
-int server_send(int fd, string data);
+void server_send(int fd, string data);
 void *tcp_server_read(void *arg);
 void mainloop(int server_fd);
 
 void redisDisconnect(redisContext *ctx);
 void displayRedisReply(redisReply *reply);
-string getRedisString(redisReply *reply);
+string getRedisString(redisReply *reply, redisContext *ctx);
 
 // Server constants
 const char *PORT = "8888";      // port numbers 1-1024 are probably reserved by your OS
 const int MAXLEN = 1024;        // Max length of a message.
 const int MAXFD = 32;           // Maximum file descriptors to use. Equals maximum clients.
-const int BACKLOG = 8;          // Number of connections that can wait in que before they be accept()ted
+const int BACKLOG = 8;          // Number of connections that can wait in queue before they be accept()'ed
 
-// This needs to be declared volatile because it can be altered by an other thread. Meaning the compiler cannot
-// optimise the code, because it's declared that not only the program can change this variable, but also external
-// programs. In this case, a thread.
 volatile fd_set the_state;
 
 pthread_mutex_t mutex_state = PTHREAD_MUTEX_INITIALIZER;
@@ -141,7 +138,7 @@ string find_path(string from, string to)
 
     /* Check for cached response in Redis */
     redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
-    string redis_reply = getRedisString(reply);
+    string redis_reply = getRedisString(reply, ctx);
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for " << from << ":" << to << endl;
@@ -214,7 +211,7 @@ unordered_set<string> find_successors(string from)
 
     /* Check for cached response in Redis */
     redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
-    string redis_reply = getRedisString(reply);
+    string redis_reply = getRedisString(reply, ctx);
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for S_" << from << endl;
@@ -243,7 +240,7 @@ unordered_set<string> find_predecessors(string from)
 
     /* Check for cached response in Redis */
     redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
-    string redis_reply = getRedisString(reply);
+    string redis_reply = getRedisString(reply, ctx);
     if (!redis_reply.empty())
     {
         cerr << "Returning cached response for P_" << from << endl;
@@ -272,11 +269,9 @@ int server_start_listen()
 
     int sock_fd;
 
-    int server_fd; // the fd the server listens on
+    int server_fd;
     int ret;
     int yes = 1;
-
-    // first, load up address structs with getaddrinfo():
 
     memset(&hostinfo, 0, sizeof(hostinfo));
 
@@ -287,12 +282,7 @@ int server_start_listen()
     getaddrinfo(NULL, PORT, &hostinfo, &res);
 
     server_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    //if(server_fd < 0) throw some error;
-
-    //prevent "Error Address already in use"
     ret = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-    // if(ret < 0) throw some error;
-
     ret = ::bind(server_fd, res->ai_addr, res->ai_addrlen);
 
     if (ret != 0)
@@ -302,16 +292,11 @@ int server_start_listen()
     }
 
     ret = listen(server_fd, BACKLOG);
-    //if(ret < 0) throw some error;
 
     return server_fd;
 }
 
 int server_establish_connection(int server_fd)
-// This function will establish a connection between the server and the
-// client. It will be executed for every new client that connects to the server.
-// This functions returns the socket filedescriptor for reading the clients data
-// or an error if it failed.
 {
     char ipstr[INET_ADDRSTRLEN];
     int port;
@@ -322,7 +307,6 @@ int server_establish_connection(int server_fd)
 
     addr_size = sizeof(addr_size);
     new_sd = accept(server_fd, (struct sockaddr *) &remote_info, &addr_size);
-    //if (fd < 0) throw some error here;
 
     getpeername(new_sd, (struct sockaddr *)&remote_info, &addr_size);
 
@@ -335,15 +319,9 @@ int server_establish_connection(int server_fd)
     return new_sd;
 }
 
-int server_send(int fd, string data)
-// This function will send data to the clients fd.
-// data contains the message to be send
+void server_send(int fd, string data)
 {
-    int ret;
-
-    ret = send(fd, data.c_str(), strlen(data.c_str()), 0);
-    //if(ret != strlen(data.c_str()) throw some error;
-    return 0;
+    send(fd, data.c_str(), strlen(data.c_str()), 0);
 }
 
 void *tcp_server_read(void *arg)
@@ -385,7 +363,7 @@ void mainloop(int server_fd)
 
     FD_ZERO(&the_state); // FD_ZERO clears all the filedescriptors in the file descriptor set fds.
 
-    while (1) // start looping here
+    while (1)
     {
         intptr_t rfd;
         void *arg;
@@ -403,11 +381,11 @@ void mainloop(int server_fd)
                 continue;
             }
 
-            pthread_mutex_lock(&mutex_state);  // Make sure no 2 threads can create a fd simultanious.
+            pthread_mutex_lock(&mutex_state);  // Make sure no 2 threads can create a fd simultaneously.
 
             FD_SET(rfd, &the_state);  // Add a file descriptor to the FD-set.
 
-            pthread_mutex_unlock(&mutex_state); // End the mutex lock
+            pthread_mutex_unlock(&mutex_state); // End the mutex lock.
 
             arg = (void *) rfd;
 

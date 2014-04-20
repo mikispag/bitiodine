@@ -6,14 +6,14 @@ void redisDisconnect(redisContext *ctx)
     redisFree(ctx);
 }
 
-std::string getRedisString(redisReply *reply)
+std::string getRedisString(redisReply *reply, redisContext *ctx)
 {
     std::string redisString;
 
     if (reply && reply->type == REDIS_REPLY_STRING)
     {
         redisString = reply->str;
-        redisFree(reply);
+        redisFree(ctx);
     }
     else return "";
 
