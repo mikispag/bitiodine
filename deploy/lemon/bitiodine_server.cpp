@@ -165,7 +165,7 @@ string find_path(string from, string to)
     }
     else
     {
-        cerr << "No paths from source to destination." << endl;
+        cerr << "No paths from " << from << " to " << to << "." << endl;
         return "";
     }
 
@@ -256,7 +256,9 @@ unordered_set<string> find_successors(string from)
         output += it + ",";
     }
 
-    output = output.substr(0, output.size() - 1);
+    /* Remove last character (;) */
+    /* This is C++11 on GCC 4.7 and is O(1) */
+    output.pop_back();
 
     /* Cache response in Redis */
     /* Set the key */
@@ -319,7 +321,9 @@ unordered_set<string> find_predecessors(string from)
         output += it + ",";
     }
 
-    output = output.substr(0, output.size() - 1);
+    /* Remove last character (;) */
+    /* This is C++11 on GCC 4.7 and is O(1) */
+    output.pop_back();
 
     /* Cache response in Redis */
     /* Set the key */
@@ -518,7 +522,9 @@ void do_command(char *command_c, int client)
                 output += it + ",";
             }
 
-            output = output.substr(0, output.size() - 1);
+            /* Remove last character (;) */
+            /* This is C++11 on GCC 4.7 and is O(1) */
+            output.pop_back();
 
             server_send(client, output + "\n");
             server_send(client, "END\n");
@@ -546,7 +552,9 @@ void do_command(char *command_c, int client)
                 output += it + ",";
             }
 
-            output = output.substr(0, output.size() - 1);
+            /* Remove last character (;) */
+            /* This is C++11 on GCC 4.7 and is O(1) */
+            output.pop_back();
 
             server_send(client, output + "\n");
             server_send(client, "END\n");
