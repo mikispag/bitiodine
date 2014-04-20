@@ -253,7 +253,7 @@ unordered_set<string> find_successors(string from)
 
     for (auto &it : successors)
     {
-        output += (*it) + ",";
+        output += it + ",";
     }
 
     output = output.substr(0, output.size() - 1);
