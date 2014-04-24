@@ -1,6 +1,8 @@
 
 // Full SQL dump of the blockchain
 
+#include <fstream>
+
 #include <util.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,14 +11,15 @@
 #include <option.h>
 #include <callback.h>
 #include <unistd.h>
+#include <stdint.h>
 
 static uint8_t empty[kSHA256ByteSize] = { 0x42 };
 typedef GoogMap<Hash256, uint64_t, Hash256Hasher, Hash256Equal>::Map OutputMap;
 
-int file_exists (char *filename)
+inline bool file_exists (const std::string &name)
 {
-    struct stat buffer;
-    return (stat(filename, &buffer) == 0);
+    std::ifstream file(name);
+    return (file.good());
 }
 
 static void writeEscapedBinaryBuffer(
@@ -49,7 +52,7 @@ struct SQLDump: public Callback
     uint64_t blkID;
     uint64_t inputID;
     uint64_t outputID;
-    int64_t cutoffBlock;
+    uint64_t cutoffBlock;
     OutputMap outputMap;
     optparse::OptionParser parser;
 
@@ -112,7 +115,9 @@ struct SQLDump: public Callback
         else
         {
             progressFile = fopen("progress.txt", "r");
-            fscanf (progressFile, "%d", &cutoffBlock);
+            if (fscanf(progressFile, "%" PRIu64, &cutoffBlock) != 1) {
+                sysErrFatal("Couldn't get progress information from progress.txt\n");
+            }
             fclose(progressFile);
             cutoffBlock++;
         }
@@ -120,19 +125,19 @@ struct SQLDump: public Callback
         info("Dumping the blockchain...");
 
         txFile = fopen("tx.txt", "w");
-        if (!txFile) sysErrFatal("couldn't open file tx.txt for writing\n");
+        if (!txFile) sysErrFatal("Couldn't open file tx.txt for writing\n");
 
         blockFile = fopen("blocks.txt", "w");
-        if (!blockFile) sysErrFatal("couldn't open file blocks.txt for writing\n");
+        if (!blockFile) sysErrFatal("Couldn't open file blocks.txt for writing\n");
 
         inputFile = fopen("txin.txt", "w");
-        if (!inputFile) sysErrFatal("couldn't open file txin.txt for writing\n");
+        if (!inputFile) sysErrFatal("Couldn't open file txin.txt for writing\n");
 
         outputFile = fopen("txout.txt", "w");
-        if (!outputFile) sysErrFatal("couldn't open file txout.txt for writing\n");
+        if (!outputFile) sysErrFatal("Couldn't open file txout.txt for writing\n");
 
         FILE *sqlFile = fopen("blockchain.sql", "w");
-        if (!sqlFile) sysErrFatal("couldn't open file blockchain.sql for writing\n");
+        if (!sqlFile) sysErrFatal("Couldn't open file blockchain.sql for writing\n");
 
         fprintf(
             sqlFile,
@@ -218,7 +223,7 @@ struct SQLDump: public Callback
         uint64_t chainSize
     )
     {
-        if (cutoffBlock > 0 && b->height < cutoffBlock)
+        if (cutoffBlock > 0 && (uint64_t)b->height < cutoffBlock)
         {
             return;
         }
@@ -377,11 +382,11 @@ struct SQLDump: public Callback
         fclose(inputFile);
         fclose(blockFile);
         fclose(txFile);
-        int ret = system("chmod +x ./blockchain.sh");
-        ret = system("./blockchain.sh");
+        system("chmod +x ./blockchain.sh");
+        system("./blockchain.sh");
         info("Done.\n");
         progressFile = fopen("progress.txt", "w");
-        fprintf(progressFile, "%d", blkID + 1);
+        fprintf(progressFile, "%" PRIu64, blkID + 1);
         fclose(progressFile);
         info("Wrote progress file.\n");
         exit(0);
