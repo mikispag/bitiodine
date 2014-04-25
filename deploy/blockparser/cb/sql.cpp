@@ -235,17 +235,19 @@ struct SQLDump: public Callback
         SKIP(uint256_t, blkMerkleRoot, p);
         LOAD(uint32_t, blkTime, p);
 
-        if (blkID + 1 >= cutoffBlock)
+        blkID = b->height - 1;
+
+        info("blkID = %" PRIu64 ", cutoffBlock = %" PRIu64 "\n", blkID, cutoffBlock);
+
+        if (blkID >= cutoffBlock)
         {
             // block_id BIGINT PRIMARY KEY
             // block_hash BINARY(32)
             // time BIGINT
-            fprintf(blockFile, "%" PRIu64 "|", (blkID = b->height - 1));
-
+            fprintf(blockFile, "%" PRIu64 "|", blkID);
 
             writeEscapedBinaryBuffer(blockFile, blockHash, kSHA256ByteSize);
             fputc('|', blockFile);
-
             fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)blkTime);
         }
         if (0 == (b->height) % 5000)
@@ -265,7 +267,7 @@ struct SQLDump: public Callback
         const uint8_t *hash
     )
     {
-        if (blkID + 1 >= cutoffBlock)
+        if (blkID >= cutoffBlock)
         {
             // tx_id BIGINT PRIMARY KEY
             // tx_hash BINARY(32)
@@ -276,6 +278,8 @@ struct SQLDump: public Callback
             fputc('|', txFile);
 
             fprintf(txFile, "%" PRIu64 "\n", blkID);
+        } else {
+            txID++;
         }
     }
 
@@ -297,7 +301,7 @@ struct SQLDump: public Callback
         int type = solveOutputScript(pubKeyHash.v, outputScript, outputScriptSize, addrType);
         if (likely(0 <= type)) hash160ToAddr(address, pubKeyHash.v);
 
-        if (blkID + 1 >= cutoffBlock)
+        if (blkID >= cutoffBlock)
         {
             // txout_id BIGINT PRIMARY KEY
             // address CHAR(40)
@@ -354,7 +358,7 @@ struct SQLDump: public Callback
         auto src = outputMap.find(h.v);
         if (outputMap.end() == src) errFatal("Unconnected input!");
 
-        if (blkID + 1 >= cutoffBlock)
+        if (blkID >= cutoffBlock)
         {
             fprintf(
                 inputFile,
@@ -368,6 +372,8 @@ struct SQLDump: public Callback
                 txID,
                 (uint32_t)outputIndex
             );
+        } else {
+            inputID++;
         }
     }
 
