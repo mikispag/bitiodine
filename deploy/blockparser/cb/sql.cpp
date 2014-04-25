@@ -68,7 +68,7 @@ struct SQLDump: public Callback
         .add_option("-a", "--atBlock")
         .action("store")
         .type("int")
-        .set_default(1)
+        .set_default(0)
         .help("start dump at block <block> (default: genesis block) - this is ignored if a blockchain database already exists")
         ;
     }
@@ -246,13 +246,13 @@ struct SQLDump: public Callback
             fputc('|', blockFile);
             fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)blkTime);
         }
-        if (0 == (b->height) % 5000)
+        if (0 == (blkID) % 5000)
         {
             fprintf(
                 stderr,
                 "block=%8" PRIu64 " "
                 "nbOutputs=%9" PRIu64 "\n",
-                b->height,
+                blkID,
                 outputMap.size()
             );
         }
