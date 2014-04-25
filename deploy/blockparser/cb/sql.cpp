@@ -210,7 +210,7 @@ struct SQLDump: public Callback
             "    rm -f $i.txt\n"
             "    echo\n"
             "done\n"
-            "mv -f /run/shm/blockchain.sqlite ../blockchain/blockchain.sqlite"
+            "mv -f /run/shm/blockchain.sqlite ../blockchain/blockchain.sqlite\n"
             "rm -f blockchain.sh\n"
             "\n"
         );
