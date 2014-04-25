@@ -141,10 +141,8 @@ struct SQLDump: public Callback
 
         fprintf(
             sqlFile,
-            "PRAGMA page_size=4096;\n"
             "PRAGMA journal_mode=memory;\n"
             "PRAGMA synchronous=0;\n"
-            "PRAGMA cache_size=1000000;\n"
             "CREATE TABLE IF NOT EXISTS blocks(\n"
             "    block_id BIGINT NOT NULL PRIMARY KEY,\n"
             "    block_hash TEXT NOT NULL,\n"
@@ -189,14 +187,17 @@ struct SQLDump: public Callback
         bashFile = fopen("blockchain.sh", "w");
         if (!bashFile) sysErrFatal("Couldn't open file blockchain.sh for writing!\n");
 
+        // EDIT here: using /run/shm/ for performance on a server - modify to local path!
         fprintf(
             bashFile,
             "\n"
             "#!/bin/bash\n"
             "\n"
             "echo 'Recreating DB blockchain...'\n"
+            "rm -f /run/shm/blockchain.sqlite\n"
+            "cp ../blockchain/blockchain.sqlite /run/shm/\n"
             "mkdir ../blockchain\n"
-            "sqlite3 ../blockchain/blockchain.sqlite < blockchain.sql\n"
+            "sqlite3 /run/shm/blockchain.sqlite < blockchain.sql\n"
             "echo done\n"
             "echo\n"
             "rm -f blockchain.sql\n"
@@ -204,11 +205,12 @@ struct SQLDump: public Callback
             "for i in blocks tx txin txout\n"
             "do\n"
             "    echo Importing table $i ...\n"
-            "    echo \".import $i.txt $i\" | sqlite3 ../blockchain/blockchain.sqlite\n"
+            "    echo \".import $i.txt $i\" | sqlite3 /run/shm/blockchain.sqlite\n"
             "    echo done\n"
             "    rm -f $i.txt\n"
             "    echo\n"
             "done\n"
+            "mv -f /run/shm/blockchain.sqlite ../blockchain/blockchain.sqlite"
             "rm -f blockchain.sh\n"
             "\n"
         );
