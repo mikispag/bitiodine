@@ -233,11 +233,6 @@ struct SQLDump: public Callback
         uint64_t chainSize
     )
     {
-        if (cutoffBlock > 0 && (uint64_t)b->height < cutoffBlock)
-        {
-            return;
-        }
-
         uint8_t blockHash[kSHA256ByteSize];
         sha256Twice(blockHash, b->data, 80);
 
@@ -247,15 +242,19 @@ struct SQLDump: public Callback
         SKIP(uint256_t, blkMerkleRoot, p);
         LOAD(uint32_t, blkTime, p);
 
-        // block_id BIGINT PRIMARY KEY
-        // block_hash BINARY(32)
-        // time BIGINT
-        fprintf(blockFile, "%" PRIu64 "|", (blkID = b->height - 1));
+        if (blkID + 1 >= cutoffBlock)
+        {
+            // block_id BIGINT PRIMARY KEY
+            // block_hash BINARY(32)
+            // time BIGINT
+            fprintf(blockFile, "%" PRIu64 "|", (blkID = b->height - 1));
 
-        writeEscapedBinaryBuffer(blockFile, blockHash, kSHA256ByteSize);
-        fputc('|', blockFile);
 
-        fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)blkTime);
+            writeEscapedBinaryBuffer(blockFile, blockHash, kSHA256ByteSize);
+            fputc('|', blockFile);
+
+            fprintf(blockFile, "%" PRIu64 "\n", (uint64_t)blkTime);
+        }
         if (0 == (b->height) % 5000)
         {
             fprintf(
@@ -273,20 +272,18 @@ struct SQLDump: public Callback
         const uint8_t *hash
     )
     {
-        if (cutoffBlock > 0 && blkID + 1 < cutoffBlock)
+        if (blkID + 1 >= cutoffBlock)
         {
-            return;
+            // tx_id BIGINT PRIMARY KEY
+            // tx_hash BINARY(32)
+            // block_id BIGINT
+            fprintf(txFile, "%" PRIu64 "|", ++txID);
+
+            writeEscapedBinaryBuffer(txFile, hash, kSHA256ByteSize);
+            fputc('|', txFile);
+
+            fprintf(txFile, "%" PRIu64 "\n", blkID);
         }
-
-        // tx_id BIGINT PRIMARY KEY
-        // tx_hash BINARY(32)
-        // block_id BIGINT
-        fprintf(txFile, "%" PRIu64 "|", ++txID);
-
-        writeEscapedBinaryBuffer(txFile, hash, kSHA256ByteSize);
-        fputc('|', txFile);
-
-        fprintf(txFile, "%" PRIu64 "\n", blkID);
     }
 
     virtual void endOutput(
@@ -298,11 +295,6 @@ struct SQLDump: public Callback
         uint64_t      outputScriptSize
     )
     {
-        if (cutoffBlock > 0 && blkID + 1 < cutoffBlock)
-        {
-            return;
-        }
-
         uint8_t address[40];
         address[0] = 'X';
         address[1] = 0;
@@ -312,25 +304,28 @@ struct SQLDump: public Callback
         int type = solveOutputScript(pubKeyHash.v, outputScript, outputScriptSize, addrType);
         if (likely(0 <= type)) hash160ToAddr(address, pubKeyHash.v);
 
-        // txout_id BIGINT PRIMARY KEY
-        // address CHAR(40)
-        // txout_value BIGINT
-        // tx_id BIGINT
-        // txout_pos INT
-        fprintf(
-            outputFile,
-            "%" PRIu64 "|"
-            "%s|"
-            "%" PRIu64 "|"
-            "%" PRIu64 "|"
-            "%" PRIu32 "\n"
-            ,
-            outputID,
-            address,
-            value,
-            txID,
-            (uint32_t)outputIndex
-        );
+        if (blkID + 1 >= cutoffBlock)
+        {
+            // txout_id BIGINT PRIMARY KEY
+            // address CHAR(40)
+            // txout_value BIGINT
+            // tx_id BIGINT
+            // txout_pos INT
+            fprintf(
+                outputFile,
+                "%" PRIu64 "|"
+                "%s|"
+                "%" PRIu64 "|"
+                "%" PRIu64 "|"
+                "%" PRIu32 "\n"
+                ,
+                outputID,
+                address,
+                value,
+                txID,
+                (uint32_t)outputIndex
+            );
+        }
 
         uint32_t oi = outputIndex;
         uint8_t *h = allocHash256();
@@ -355,11 +350,6 @@ struct SQLDump: public Callback
         uint64_t      inputScriptSize
     )
     {
-        if (cutoffBlock > 0 && blkID + 1 < cutoffBlock)
-        {
-            return;
-        }
-
         uint256_t h;
         uint32_t oi = outputIndex;
         memcpy(h.v, upTXHash, kSHA256ByteSize);
@@ -369,21 +359,23 @@ struct SQLDump: public Callback
         h32[0] ^= oi;
 
         auto src = outputMap.find(h.v);
-        // if (outputMap.end() == src) errFatal("Unconnected input!");
+        if (outputMap.end() == src) errFatal("Unconnected input!");
 
-        // ...
-        fprintf(
-            inputFile,
-            "%" PRIu64 "|"
-            "%" PRIu64 "|"
-            "%" PRIu64 "|"
-            "%" PRIu32 "\n"
-            ,
-            inputID++,
-            src->second,
-            txID,
-            (uint32_t)outputIndex
-        );
+        if (blkID + 1 >= cutoffBlock)
+        {
+            fprintf(
+                inputFile,
+                "%" PRIu64 "|"
+                "%" PRIu64 "|"
+                "%" PRIu64 "|"
+                "%" PRIu32 "\n"
+                ,
+                inputID++,
+                src->second,
+                txID,
+                (uint32_t)outputIndex
+            );
+        }
     }
 
     virtual void wrapup()
