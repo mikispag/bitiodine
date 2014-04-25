@@ -1,4 +1,3 @@
-
 // Full SQL dump of the blockchain
 
 #include <fstream>
@@ -12,6 +11,7 @@
 #include <callback.h>
 #include <unistd.h>
 #include <stdint.h>
+#include "sqlite3pp.h"
 
 static uint8_t empty[kSHA256ByteSize] = { 0x42 };
 typedef GoogMap<Hash256, uint64_t, Hash256Hasher, Hash256Equal>::Map OutputMap;
@@ -69,7 +69,7 @@ struct SQLDump: public Callback
         .action("store")
         .type("int")
         .set_default(1)
-        .help("start dump at block <block> (default: genesis block) - this is ignored if progress.txt exists in the current path")
+        .help("start dump at block <block> (default: genesis block) - this is ignored if a blockchain database already exists")
         ;
     }
 
@@ -108,18 +108,26 @@ struct SQLDump: public Callback
         outputMap.resize(sz);
 
         optparse::Values &values = parser.parse_args(argc, argv);
-        if (!file_exists("progress.txt"))
+        if (!file_exists("../blockchain/blockchain.sqlite"))
         {
             cutoffBlock = values.get("atBlock");
         }
         else
         {
-            progressFile = fopen("progress.txt", "r");
-            if (fscanf(progressFile, "%" PRIu64, &cutoffBlock) != 1) {
-                sysErrFatal("Couldn't get progress information from progress.txt\n");
+            sqlite3pp::database db("../blockchain/blockchain.sqlite");
+            sqlite3pp::query qry(db, "SELECT MAX(block_id) FROM blocks UNION SELECT MAX(tx_id) FROM tx UNION SELECT MAX(txin_id) FROM txin UNION SELECT MAX(txout_id) FROM txout");
+            if (qry.column_count() != 4)
+            {
+                sysErrFatal("Could not get progress info from blockchain.sqlite.\n");
             }
-            fclose(progressFile);
-            cutoffBlock++;
+            
+            cutoffBlock = (uint64_t) atoi(qry.column_name(0));
+            blkID = cutoffBlock;
+            txID = (uint64_t) atoi(qry.column_name(1));
+            inputID = (uint64_t) atoi(qry.column_name(2));
+            outputID = (uint64_t) atoi(qry.column_name(3));
+
+            info("Resuming from block %" PRIu64 ".\n", cutoffBlock);
         }
 
         info("Dumping the blockchain...");
@@ -360,7 +368,7 @@ struct SQLDump: public Callback
         h32[0] ^= oi;
 
         auto src = outputMap.find(h.v);
-        if (outputMap.end() == src) errFatal("Unconnected input!");
+        // if (outputMap.end() == src) errFatal("Unconnected input!");
 
         // ...
         fprintf(
@@ -395,3 +403,4 @@ struct SQLDump: public Callback
 };
 
 static SQLDump sqlDump;
+
