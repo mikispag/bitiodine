@@ -178,9 +178,7 @@ struct SQLDump: public Callback
             "CREATE INDEX IF NOT EXISTS x_txout_address ON txout (address);\n"
             "CREATE INDEX IF NOT EXISTS x_txin_txid ON txin (tx_id);\n"
             "CREATE INDEX IF NOT EXISTS x_txout_txid ON txout (tx_id);\n"
-            "CREATE INDEX IF NOT EXISTS x_tx_txid ON tx (tx_id);\n"
-            "CREATE INDEX IF NOT EXISTS x_txout_value ON txout(txout_value);\n"
-            "CREATE INDEX IF NOT EXISTS x_blocks_id ON blocks(block_id);\n"
+            "CREATE INDEX IF NOT EXISTS x_txout_value ON txout (txout_value);\n"
             "CREATE VIEW IF NOT EXISTS tx_full AS SELECT blocks.time, tx.tx_hash, tx.tx_id, txout.address, txout.txout_value FROM txout LEFT JOIN tx ON (tx.tx_id = txout.tx_id) LEFT JOIN blocks ON (tx.block_id = blocks.block_id);\n"
             "\n"
         );
