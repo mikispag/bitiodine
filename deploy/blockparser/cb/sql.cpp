@@ -115,18 +115,11 @@ struct SQLDump: public Callback
         else
         {
             sqlite3pp::database db("../blockchain/blockchain.sqlite");
-            sqlite3pp::query qry(db, "SELECT MAX(block_id) FROM blocks UNION SELECT MAX(tx_id) FROM tx UNION SELECT MAX(txin_id) FROM txin UNION SELECT MAX(txout_id) FROM txout");
+            sqlite3pp::query qry(db, "SELECT MAX(block_id) FROM blocks");
 
             sqlite3pp::query::iterator i = qry.begin();
 
             cutoffBlock = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
-            i++;
-            blkID = cutoffBlock;
-            txID = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
-            i++;
-            inputID = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
-            i++;
-            outputID = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
 
             info("Resuming from block %" PRIu64 ".\n", cutoffBlock);
         }
