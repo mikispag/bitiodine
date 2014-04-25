@@ -116,16 +116,17 @@ struct SQLDump: public Callback
         {
             sqlite3pp::database db("../blockchain/blockchain.sqlite");
             sqlite3pp::query qry(db, "SELECT MAX(block_id) FROM blocks UNION SELECT MAX(tx_id) FROM tx UNION SELECT MAX(txin_id) FROM txin UNION SELECT MAX(txout_id) FROM txout");
-            if (qry.column_count() != 4)
-            {
-                sysErrFatal("Could not get progress info from blockchain.sqlite.\n");
-            }
-            
-            cutoffBlock = (uint64_t) atoi(qry.column_name(0));
+
+            sqlite3pp::query::iterator i = qry.begin();
+
+            cutoffBlock = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
+            i++;
             blkID = cutoffBlock;
-            txID = (uint64_t) atoi(qry.column_name(1));
-            inputID = (uint64_t) atoi(qry.column_name(2));
-            outputID = (uint64_t) atoi(qry.column_name(3));
+            txID = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
+            i++;
+            inputID = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
+            i++;
+            outputID = (uint64_t) atoi((*i).get<char const *>(0)) + 1;
 
             info("Resuming from block %" PRIu64 ".\n", cutoffBlock);
         }
@@ -394,10 +395,6 @@ struct SQLDump: public Callback
         system("chmod +x ./blockchain.sh");
         system("./blockchain.sh");
         info("Done.\n");
-        progressFile = fopen("progress.txt", "w");
-        fprintf(progressFile, "%" PRIu64, blkID + 1);
-        fclose(progressFile);
-        info("Wrote progress file.\n");
         exit(0);
     }
 };
