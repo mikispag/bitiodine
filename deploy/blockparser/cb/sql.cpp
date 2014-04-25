@@ -196,6 +196,7 @@ struct SQLDump: public Callback
             "\n"
             "echo 'Recreating DB blockchain...'\n"
             "mkdir ../blockchain\n"
+            "rm -f ../blockchian/lock; touch ../blockchian/lock\n"
             "rm -f ../blockchain/blockchain.sqlite\n"
             "sqlite3 ../blockchain/blockchain.sqlite < blockchain.sql\n"
             "echo done\n"
@@ -210,6 +211,7 @@ struct SQLDump: public Callback
             "    rm -f $i.txt\n"
             "    echo\n"
             "done\n"
+            "rm ../blockchian/lock\n"
             "rm -f blockchain.sh\n"
             "\n"
         );

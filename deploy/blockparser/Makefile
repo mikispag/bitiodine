@@ -17,6 +17,7 @@ COPT =                          \
         -msse3                  \
         -Wextra                 \
         -Wformat                \
+        -Wno-unused-result		\
         -pedantic               \
         -std=c++0x              \
         -ffast-math             \
