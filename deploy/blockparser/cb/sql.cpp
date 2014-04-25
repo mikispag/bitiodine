@@ -198,7 +198,7 @@ struct SQLDump: public Callback
             "echo 'Recreating DB blockchain...'\n"
             "rm -f /run/shm/blockchain.sqlite\n"
             "mkdir ../blockchain\n"
-            "cp ../blockchain/blockchain.sqlite /run/shm/\n"
+            "cp -f ../blockchain/blockchain.sqlite /run/shm/\n"
             "sqlite3 /run/shm/blockchain.sqlite < blockchain.sql\n"
             "echo done\n"
             "echo\n"
@@ -253,7 +253,7 @@ struct SQLDump: public Callback
             fprintf(
                 stderr,
                 "block=%8" PRIu64 " "
-                "nbOutputs=%8" PRIu64 "\n",
+                "nbOutputs=%9" PRIu64 "\n",
                 b->height,
                 outputMap.size()
             );
