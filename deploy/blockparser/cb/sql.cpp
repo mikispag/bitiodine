@@ -141,7 +141,7 @@ struct SQLDump: public Callback
 
         fprintf(
             sqlFile,
-            "PRAGMA journal_mode=memory;\n"
+            "PRAGMA journal_mode=MEMORY;\n"
             "PRAGMA synchronous=0;\n"
             "CREATE TABLE IF NOT EXISTS blocks(\n"
             "    block_id BIGINT NOT NULL PRIMARY KEY,\n"
