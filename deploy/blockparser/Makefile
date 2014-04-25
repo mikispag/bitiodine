@@ -1,4 +1,3 @@
-
 SHELL=/bin/sh
 MAKEFLAGS=-j8
 
@@ -38,6 +37,7 @@ LOPT =                          \
 LIBS =                          \
     -lcrypto                    \
     -ldl                        \
+    -lsqlite3			\
 
 all:parser
 
@@ -167,6 +167,13 @@ all:parser
 	@${CPLUS} -MD ${INC} ${COPT}  -c util.cpp -o .objs/util.o
 	@mv .objs/util.d .deps
 
+.objs/sqlite3pp.o : sqlite3pp.cpp
+	@echo c++ -- sqlite3.cpp
+	@mkdir -p .deps
+	@mkdir -p .objs
+	@${CPLUS} -MD ${INC} ${COPT}  -c sqlite3pp.cpp -o .objs/sqlite3pp.o
+	@mv .objs/sqlite3pp.d .deps
+
 OBJS=                       \
     .objs/allBalances.o     \
     .objs/allAddresses.o    \
@@ -186,6 +193,7 @@ OBJS=                       \
     .objs/taint.o           \
     .objs/transactions.o    \
     .objs/util.o            \
+    .objs/sqlite3pp.o	    \
 
 parser:${OBJS}
 	@echo lnk -- parser 
