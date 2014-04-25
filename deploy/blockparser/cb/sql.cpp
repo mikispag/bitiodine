@@ -237,8 +237,6 @@ struct SQLDump: public Callback
 
         blkID = b->height - 1;
 
-        info("blkID = %" PRIu64 ", cutoffBlock = %" PRIu64 "\n", blkID, cutoffBlock);
-
         if (blkID >= cutoffBlock)
         {
             // block_id BIGINT PRIMARY KEY
