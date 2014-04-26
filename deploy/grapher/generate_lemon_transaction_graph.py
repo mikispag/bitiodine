@@ -19,7 +19,7 @@ def padWithSpaces(address):
 FILENAME = "tx_graph.lgf.new"
 db = SQLiteWrapper('../blockchain/blockchain.sqlite')
 
-min_txid_res = 1
+min_txid_res = 0
 
 try:
   addresses_res = db.query("SELECT DISTINCT address FROM txout")
