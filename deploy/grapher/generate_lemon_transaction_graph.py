@@ -52,7 +52,7 @@ with open(FILENAME, 'w') as f:
         elif "@arcs" in line:
           resume = True
     try:
-      min_txid_res = db.query(txhash_to_txid_query, tx_hash.split()[2].rstrip(), fetch_one=True)
+      min_txid_res = db.query(txhash_to_txid_query, (tx_hash.split()[2].rstrip(),), fetch_one=True)
     except Exception as e:
       die(e)
 
