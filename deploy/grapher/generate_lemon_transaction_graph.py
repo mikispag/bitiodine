@@ -49,7 +49,7 @@ with open(FILENAME, 'w') as f:
         if resume:
           tx_hash = line
           f.write(line)
-        elif "@arcs" in line:
+        elif "tx_hash\n" in line:
           resume = True
     try:
       min_txid_res = db.query(txhash_to_txid_query, (tx_hash.split()[2].rstrip(),), fetch_one=True)
