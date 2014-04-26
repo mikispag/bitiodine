@@ -19,12 +19,15 @@ def padWithSpaces(address):
 FILENAME = "tx_graph.lgf.new"
 db = SQLiteWrapper('../blockchain/blockchain.sqlite')
 
+min_txid_res = 1
+
 try:
   addresses_res = db.query("SELECT DISTINCT address FROM txout")
 except Exception as e:
   die(e)
 
 with open(FILENAME, 'w') as f:
+
   f.write("@nodes\n")
   f.write("label\n")
 
@@ -37,14 +40,30 @@ with open(FILENAME, 'w') as f:
   f.write(" " * 35)
   f.write("tx_hash\n")
 
+  if os.path.isfile("tx_graph.lgf"):
+    with open("tx_graph.lgf") as f_r:
+      resume = False
+      for line in f_r:
+        if resume and line == "\n":
+          break
+        if resume:
+          tx_hash = line.split()[2].rstrip()
+          f.write(line)
+        elif "@arcs" in line:
+          resume = True
+    try:
+      min_txid_res = db.query(txhash_to_txid_query, tx_hash, fetch_one=True)
+    except Exception as e:
+      die(e)
+
   try:
     max_txid_res = db.query(max_txid_query, fetch_one=True)
   except Exception as e:
     die(e)
 
-  print("Scanning %d transactions." %(max_txid_res))
+  print("Scanning %d transactions." % (max_txid_res + 1 - min_txid_res))
 
-  for tx_id in range(1, max_txid_res + 1):
+  for tx_id in range(min_txid_res, max_txid_res + 1):
     try:
       in_res = db.query(in_query_addr, (tx_id,))
       out_res = db.query(out_query_addr, (tx_id,))
