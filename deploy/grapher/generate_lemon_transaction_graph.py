@@ -61,9 +61,9 @@ with open(FILENAME, 'w') as f:
   except Exception as e:
     die(e)
 
-  print("Scanning %d transactions." % (max_txid_res + 1 - min_txid_res))
+  print("Scanning %d transactions." % (max_txid_res - min_txid_res))
 
-  for tx_id in range(min_txid_res, max_txid_res + 1):
+  for tx_id in range(min_txid_res + 1, max_txid_res + 1):
     try:
       in_res = db.query(in_query_addr, (tx_id,))
       out_res = db.query(out_query_addr, (tx_id,))
