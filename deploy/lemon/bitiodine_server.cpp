@@ -486,7 +486,12 @@ void do_command(char *command_c, int client)
 {
     string command = command_c;
     string output;
-    vector<string> tokens = tokenize(command);
+    try {
+        vector<string> tokens = tokenize(command);
+    } catch (...) {
+        server_send(client, "404 COMMAND NOT FOUND\n");
+        return;
+    }
 
     if (tokens[0] == "SHORTEST_PATH_A2A")
     {
