@@ -486,8 +486,9 @@ void do_command(char *command_c, int client)
 {
     string command = command_c;
     string output;
+    vector<string> tokens;
     try {
-        vector<string> tokens = tokenize(command);
+        tokens = tokenize(command);
     } catch (...) {
         server_send(client, "404 COMMAND NOT FOUND\n");
         return;
