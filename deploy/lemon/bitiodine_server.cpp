@@ -617,6 +617,16 @@ void do_command(char *command_c, int client)
 
         return;
     }
+    else if (tokens[0] == "STATS")
+    {
+        server_send(client, "BEGIN\n");
+        server_send(client, to_string(countNodes(g)));
+        server_send(client, "\n");
+        server_send(client, to_string(countArcs(g)));
+        server_send(client, "\nEND\n");
+
+        return;
+    }
     else if (tokens[0] == "QUIT")
     {
         exit(0);
