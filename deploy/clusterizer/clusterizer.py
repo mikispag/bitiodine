@@ -140,11 +140,12 @@ if options.load or options.csv:
 		die(e)
 
 	if options.csv:
-		with open("clusters.csv", "w") as f:
+		with open("clusters.csv.new", "w") as f:
 			writer = csv.writer(f)
 			writer.writerow(["address", "cluster"])
 			for address, cluster in users.items():
 				writer.writerow([address, cluster])
+		os.rename("clusters.csv.new", "clusters.csv");
 		sys.exit(0)
 
 	counter = Counter(users.values())

@@ -16,7 +16,7 @@ def padWithSpaces(address):
     address += " " * (34 - len(address))
   return address
 
-FILENAME = "tx_graph.lgf"
+FILENAME = "tx_graph.lgf.new"
 db = SQLiteWrapper('../blockchain/blockchain.sqlite')
 
 try:
@@ -76,3 +76,5 @@ with open(FILENAME, 'w') as f:
   f.write("\n")
   f.write("@attributes\n")
   f.write("source 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa\n") # Genesis address
+
+os.rename("tx_graph.lgf.new", "tx_graph.lgf");
