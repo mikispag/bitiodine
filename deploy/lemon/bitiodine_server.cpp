@@ -537,7 +537,11 @@ void do_command(char *command_c, int client)
 
             /* Remove last character (;) */
             /* This is C++11 on GCC 4.7 and is O(1) */
-            output.pop_back();
+            try {
+                output.pop_back();
+            } catch (...) {
+                // Do nothing for now.
+            }
 
             server_send(client, output + "\n");
             server_send(client, "END\n");
