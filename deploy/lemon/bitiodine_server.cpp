@@ -18,6 +18,7 @@
 #include <lemon/lgf_reader.h>
 #include <lemon/path.h>
 #include <lemon/smart_graph.h>
+#include <stdlib.h>
 #include "csv.h"
 #include "redis.h"
 
@@ -348,7 +349,7 @@ int server_start_listen()
     int sock_fd;
 
     int server_fd;
-    int ret;
+    int ret_bind = 1;
     int yes = 1;
 
     memset(&hostinfo, 0, sizeof(hostinfo));
@@ -360,16 +361,22 @@ int server_start_listen()
     getaddrinfo(NULL, PORT, &hostinfo, &res);
 
     server_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    ret = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-    ret = ::bind(server_fd, res->ai_addr, res->ai_addrlen);
+    int ret_setsockopt = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
-    if (ret != 0)
-    {
+    while (ret_bind != 0) {
+        ret_bind = ::bind(server_fd, res->ai_addr, res->ai_addrlen);
         cerr << "Error:" << strerror(errno) << endl;
-        return -1;
+        cerr << "Trying to kill already running process..." << endl;
+        int ret_system = system("for pid in `ps aux | grep bitiodine_server | grep -v SCREEN | grep -v grep | cut -d' ' -f6`; do kill -9 $pid; done;");
+        cerr << "system() returned " << ret_system << "." << endl;
     }
 
-    ret = listen(server_fd, BACKLOG);
+    int ret_listen = listen(server_fd, BACKLOG);
+
+    if (ret_listen != 0) {
+        cerr << "Error on listen()." << endl;
+        return -1;
+    }
 
     return server_fd;
 }
