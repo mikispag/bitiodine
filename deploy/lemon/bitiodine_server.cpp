@@ -368,7 +368,7 @@ void server_thread(int rfd)
     char buf[MAXLEN];
 
     // Send welcome message
-    server_send(rfd, welcome_msg);
+    server_send(rfd, "200 BitIodine 1.0.0 READY\n");
 
     for (;;) {
         int buflen = read(rfd, buf, sizeof(buf));
@@ -385,8 +385,6 @@ void server_thread(int rfd)
 
 void mainloop(int server_fd)
 {
-    string welcome_msg = "200 BitIodine 1.0.0 READY\n";
-
     for (;;) {
         int rfd = server_establish_connection(server_fd);
 
