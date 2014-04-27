@@ -29,7 +29,6 @@ int server_start_listen();
 void do_command(char *command, int client);
 int server_establish_connection(int server_fd);
 void server_send(int fd, string data);
-void *tcp_server_read(void *arg);
 void mainloop(int server_fd);
 
 void redisDisconnect(redisContext *ctx);
@@ -312,7 +311,7 @@ unordered_set<string> find_predecessors(string from)
         output += it + ",";
     }
 
-    /* Remove last character (,) */ (
+    /* Remove last character (,) */
     try {
         output.pop_back();
     } catch (...) {
