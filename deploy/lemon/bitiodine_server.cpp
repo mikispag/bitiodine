@@ -4,11 +4,11 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
-#include <pthread.h>
 #include <algorithm>
 #include <vector>
 #include <list>
 #include <iterator>
+#include <thread>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,10 +41,6 @@ const char *PORT = "8888";      // port numbers 1-1024 are probably reserved by 
 const int MAXLEN = 1024;        // Max length of a message.
 const int MAXFD = 32;           // Maximum file descriptors to use. Equals maximum clients.
 const int BACKLOG = 8;          // Number of connections that can wait in queue before they be accept()'ed
-
-volatile fd_set the_state;
-
-pthread_mutex_t mutex_state = PTHREAD_MUTEX_INITIALIZER;
 
 SmartDigraph g;
 SmartDigraph::Node genesis = INVALID;
@@ -197,11 +193,7 @@ string find_path(string from, string to)
     string path = oss.str();
 
     /* Cache response in Redis */
-    /* Set the key */
-    redisCommand(ctx, "SET %s:%s %s", from.c_str(), to.c_str(), path.c_str());
-
-    /* Put a 24h expiration to the key */
-    redisCommand(ctx, "EXPIRE %s:%s 86400", from.c_str(), to.c_str());
+    redisCommand(ctx, "SETEX %s:%s 14400 %s", from.c_str(), to.c_str(), path.c_str());
 
     if (ctx)
     {
@@ -216,8 +208,7 @@ unordered_set<string> find_successors(string from)
     SmartDigraph::Node s = INVALID;
     unordered_set<string> successors;
 
-    string redis_reply = "";
-    string output = "";
+    string redis_reply, output;
 
     redisContext *ctx;
     ctx = redisConnect("127.0.0.1", 6379);
@@ -257,8 +248,7 @@ unordered_set<string> find_successors(string from)
         output += it + ",";
     }
 
-    /* Remove last character (;) */
-    /* This is C++11 on GCC 4.7 and is O(1) */
+    /* Remove last character (,) */
     try {
         output.pop_back();
     } catch (...) {
@@ -266,11 +256,7 @@ unordered_set<string> find_successors(string from)
     }
 
     /* Cache response in Redis */
-    /* Set the key */
-    redisCommand(ctx, "SET S_%s %s", from.c_str(), output.c_str());
-
-    /* Put a 24h expiration to the key */
-    redisCommand(ctx, "EXPIRE S_%s 86400", from.c_str());
+    redisCommand(ctx, "SETEX S_%s 14400 %s", from.c_str(), output.c_str());
 
     if (ctx)
     {
@@ -326,8 +312,7 @@ unordered_set<string> find_predecessors(string from)
         output += it + ",";
     }
 
-    /* Remove last character (;) */
-    /* This is C++11 on GCC 4.7 and is O(1) */
+    /* Remove last character (,) */ (
     try {
         output.pop_back();
     } catch (...) {
@@ -335,11 +320,7 @@ unordered_set<string> find_predecessors(string from)
     }
 
     /* Cache response in Redis */
-    /* Set the key */
-    redisCommand(ctx, "SET P_%s %s", from.c_str(), output.c_str());
-
-    /* Put a 24h expiration to the key */
-    redisCommand(ctx, "EXPIRE P_%s 86400", from.c_str());
+    redisCommand(ctx, "SETEX P_%s 14400 %s", from.c_str(), output.c_str());
 
     if (ctx)
     {
@@ -394,22 +375,21 @@ int server_establish_connection(int server_fd)
     char ipstr[INET_ADDRSTRLEN];
     int port;
 
-    int new_sd;
+    int new_fd;
     struct sockaddr_storage remote_info;
     socklen_t addr_size;
 
     addr_size = sizeof(addr_size);
-    new_sd = accept(server_fd, (struct sockaddr *) &remote_info, &addr_size);
+    new_fd = accept(server_fd, (struct sockaddr *) &remote_info, &addr_size);
 
-    getpeername(new_sd, (struct sockaddr *)&remote_info, &addr_size);
+    getpeername(new_fd, (struct sockaddr *)&remote_info, &addr_size);
 
     struct sockaddr_in *s = (struct sockaddr_in *)&remote_info;
     port = ntohs(s->sin_port);
     inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
 
-    std::cerr << "Connection accepted from "  << ipstr <<  " using port " << port << endl;
-
-    return new_sd;
+    cerr << "Connection accepted from "  << ipstr <<  " using port " << port << endl;
+    return new_fd;
 }
 
 void server_send(int fd, string data)
@@ -417,52 +397,32 @@ void server_send(int fd, string data)
     send(fd, data.c_str(), strlen(data.c_str()), 0);
 }
 
-void *tcp_server_read(void *arg)
-// This function runs in a thread for every client, and reads incoming data.
+void tcp_server_read(int rfd)
 {
-    intptr_t rfd;
-
     char buf[MAXLEN];
-    int buflen;
-    int wfd;
 
-    rfd = (intptr_t)arg;
     for (;;)
     {
-        buflen = read(rfd, buf, sizeof(buf));
+        int buflen = read(rfd, buf, sizeof(buf));
         if (buflen <= 0)
         {
             cerr << "Client disconnected. Clearing fd " << rfd << endl;
-            pthread_mutex_lock(&mutex_state);
-            FD_CLR(rfd, &the_state);
-            pthread_mutex_unlock(&mutex_state);
             close(rfd);
-            pthread_exit(NULL);
+            return;
         }
 
         do_command(buf, rfd);
 
     }
-    return NULL;
 }
 
 void mainloop(int server_fd)
-// This loop will wait for a client to connect. When the client connects, it creates a
-// new thread for the client and starts waiting again for a new client.
 {
     string welcome_msg = "200 BitIodine 1.0.0 READY\n";
 
-    pthread_t threads[MAXFD];
-
-    FD_ZERO(&the_state); // FD_ZERO clears all the filedescriptors in the file descriptor set fds.
-
-    while (1)
+    for (;;)
     {
-        intptr_t rfd;
-        void *arg;
-
-        // if a client is trying to connect, establish the connection and create a fd for the client.
-        rfd = server_establish_connection(server_fd);
+        int rfd = server_establish_connection(server_fd);
 
         if (rfd >= 0)
         {
@@ -474,18 +434,9 @@ void mainloop(int server_fd)
                 continue;
             }
 
-            pthread_mutex_lock(&mutex_state);  // Make sure no 2 threads can create a fd simultaneously.
+            server_send(rfd, welcome_msg);
 
-            FD_SET(rfd, &the_state);  // Add a file descriptor to the FD-set.
-
-            pthread_mutex_unlock(&mutex_state); // End the mutex lock.
-
-            arg = (void *) rfd;
-
-            server_send(rfd, welcome_msg); // send a welcome message/instructions.
-
-            // now create a thread for this client to intercept all incoming data from it.
-            pthread_create(&threads[rfd], NULL, tcp_server_read, arg);
+            thread newthread (tcp_server_read, rfd);
         }
     }
 }
@@ -543,8 +494,7 @@ void do_command(char *command_c, int client)
                 output += it + ",";
             }
 
-            /* Remove last character (;) */
-            /* This is C++11 on GCC 4.7 and is O(1) */
+            /* Remove last character (,) */
             try {
                 output.pop_back();
             } catch (...) {
@@ -577,8 +527,7 @@ void do_command(char *command_c, int client)
                 output += it + ",";
             }
 
-            /* Remove last character (;) */
-            /* This is C++11 on GCC 4.7 and is O(1) */
+            /* Remove last character (,) */
             try {
                 output.pop_back();
             } catch (...) {
