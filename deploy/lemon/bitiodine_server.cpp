@@ -1,45 +1,46 @@
-#include <iostream>
-#include <cstring>
-#include <cstdint>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/socket.h>
 #include <algorithm>
-#include <vector>
-#include <list>
-#include <iterator>
-#include <thread>
-#include <sstream>
-#include <unordered_map>
-#include <unordered_set>
+#include <arpa/inet.h>
+#include <cstdint>
+#include <cstring>
 #include <errno.h>
-#include <unistd.h>
+#include <iostream>
+#include <iterator>
 #include <lemon/bfs.h>
 #include <lemon/lgf_reader.h>
 #include <lemon/path.h>
 #include <lemon/smart_graph.h>
+#include <list>
+#include <netdb.h>
+#include <sstream>
 #include <stdlib.h>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 #include "csv.h"
 #include "redis.h"
 
 using namespace lemon;
 using namespace std;
 
-int server_start_listen();
-void do_command(char *command, int client);
+void do_command(char *command_c, int client);
+string find_path(string from, string to);
+unordered_set<string> find_predecessors(string from);
+unordered_set<string> find_successors(string from);
+void mainloop(int server_fd);
+void print_cluster(int client, int cluster);
 int server_establish_connection(int server_fd);
 void server_send(int fd, string data);
-void mainloop(int server_fd);
-
-void redisDisconnect(redisContext *ctx);
-void displayRedisReply(redisReply *reply);
-string getRedisString(redisReply *reply);
+int server_start_listen();
+void server_thread(int rfd);
 
 // Server constants
 const char *PORT = "8888";      // port numbers 1-1024 are probably reserved by your OS
 const int MAXLEN = 1024;        // Max length of a message.
-const int MAXFD = 32;           // Maximum file descriptors to use. Equals maximum clients.
-const int BACKLOG = 8;          // Number of connections that can wait in queue before they be accept()'ed
+const int MAXFD = 128;          // Maximum file descriptors to use. Equals maximum clients.
+const int BACKLOG = 256;        // Number of connections that can wait in queue before they be accept()'ed
 
 SmartDigraph g;
 SmartDigraph::Node genesis = INVALID;
@@ -57,16 +58,13 @@ vector<string> tokenize(string const &input)
 
 int main()
 {
-    try
-    {
+    try {
         digraphReader(g, "../grapher/tx_graph.lgf").  // read the directed graph into g
         arcMap("tx_hash", tx_hash).                   // read the 'tx_hash' arc map into tx_hash
         nodeMap("label", address).
         node("source", genesis).                      // read 'source' node to genesis
         run();
-    }
-    catch (Exception &error)
-    {
+    } catch (Exception &error) {
         cerr << "Error: " << error.what() << endl;
         return -1;
     }
@@ -78,8 +76,7 @@ int main()
     io::CSVReader<2> in("../clusterizer/clusters.csv");
     in.read_header(io::ignore_extra_column, "address", "cluster");
     string address; int cluster;
-    while (in.read_row(address, cluster))
-    {
+    while (in.read_row(address, cluster)) {
         clusters.insert(make_pair(address, cluster));
     }
 
@@ -87,8 +84,7 @@ int main()
 
     cerr << "Server started." << endl;
 
-    if (server_fd == -1)
-    {
+    if (server_fd == -1) {
         cerr << "An error occured. Closing program." << endl;
         return 1;
     }
@@ -101,10 +97,8 @@ void print_cluster(int client, int cluster)
 {
     server_send(client, "BEGIN\n");
 
-    for (auto &it : clusters)
-    {
-        if (it.second == cluster)
-        {
+    for (auto &it : clusters) {
+        if (it.second == cluster) {
             server_send(client, it.first + "\n");
         }
     }
@@ -124,26 +118,22 @@ string find_path(string from, string to)
     redisContext *ctx;
     ctx = redisConnect("127.0.0.1", 6379);
 
-    if (ctx->err)
-    {
+    if (ctx->err) {
         cerr << "Error: " << ctx->errstr << endl;
     }
 
-    /* Check for cached response in Redis */
-    if (ctx)
-    {
+    // Check for cached response in Redis
+    if (ctx) {
         redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
         redis_reply = getRedisString(reply);
     }
 
-    if (!redis_reply.empty())
-    {
+    if (!redis_reply.empty()) {
         cerr << "Returning cached response for " << from << ":" << to << endl;
         return redis_reply;
     }
 
-    for (SmartDigraph::NodeIt n(g); (s == INVALID || t == INVALID) && n != INVALID; ++n)
-    {
+    for (SmartDigraph::NodeIt n(g); (s == INVALID || t == INVALID) && n != INVALID; ++n) {
         if (s == INVALID && address[n] == from)
             s = n;
         if (t == INVALID && address[n] == to)
@@ -155,34 +145,26 @@ string find_path(string from, string to)
 
     bool reached = bfs(g).path(p).dist(d).run(s, t);
 
-    if (reached)
-    {
+    if (reached) {
         oss << d << endl;
-    }
-    else
-    {
+    } else {
         cerr << "No paths from " << from << " to " << to << "." << endl;
         return "";
     }
 
     oss << from;
 
-    for (Path<SmartDigraph>::ArcIt a(p); a != INVALID; ++a)
-    {
+    for (Path<SmartDigraph>::ArcIt a(p); a != INVALID; ++a) {
         oss << ">" << address[g.target(a)];
     }
 
     oss << endl;
 
     bool first = true;
-    for (Path<SmartDigraph>::ArcIt a(p); a != INVALID; ++a)
-    {
-        if (first)
-        {
+    for (Path<SmartDigraph>::ArcIt a(p); a != INVALID; ++a) {
+        if (first) {
             first = false;
-        }
-        else
-        {
+        } else {
             oss << ">";
         }
         oss << tx_hash[a];
@@ -191,11 +173,10 @@ string find_path(string from, string to)
     oss << endl;
     string path = oss.str();
 
-    /* Cache response in Redis */
+    // Cache response in Redis
     redisCommand(ctx, "SETEX %s:%s 14400 %s", from.c_str(), to.c_str(), path.c_str());
 
-    if (ctx)
-    {
+    if (ctx) {
         redisDisconnect(ctx);
     }
 
@@ -212,38 +193,32 @@ unordered_set<string> find_successors(string from)
     redisContext *ctx;
     ctx = redisConnect("127.0.0.1", 6379);
 
-    if (ctx->err)
-    {
+    if (ctx->err) {
         cerr << "Error: " << ctx->errstr << endl;
     }
 
     /* Check for cached response in Redis */
-    if (ctx)
-    {
+    if (ctx) {
         redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
         redis_reply = getRedisString(reply);
     }
 
-    if (!redis_reply.empty())
-    {
+    if (!redis_reply.empty()) {
         cerr << "Returning cached response for S_" << from << endl;
         successors.insert(redis_reply);
         return successors;
     }
 
-    for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n)
-    {
+    for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
         if (address[n] == from)
             s = n;
     }
 
-    for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a)
-    {
+    for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         successors.insert(address[g.target(a)]);
     }
 
-    for (auto &it : successors)
-    {
+    for (auto &it : successors) {
         output += it + ",";
     }
 
@@ -254,11 +229,10 @@ unordered_set<string> find_successors(string from)
         // Do nothing for now.
     }
 
-    /* Cache response in Redis */
+    // Cache response in Redis
     redisCommand(ctx, "SETEX S_%s 14400 %s", from.c_str(), output.c_str());
 
-    if (ctx)
-    {
+    if (ctx) {
         redisDisconnect(ctx);
     }
 
@@ -276,38 +250,32 @@ unordered_set<string> find_predecessors(string from)
     redisContext *ctx;
     ctx = redisConnect("127.0.0.1", 6379);
 
-    if (ctx->err)
-    {
+    if (ctx->err) {
         cerr << "Error: " << ctx->errstr << endl;
     }
 
     /* Check for cached response in Redis */
-    if (ctx)
-    {
+    if (ctx) {
         redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
         redis_reply = getRedisString(reply);
     }
 
-    if (!redis_reply.empty())
-    {
+    if (!redis_reply.empty()) {
         cerr << "Returning cached response for P_" << from << endl;
         predecessors.insert(redis_reply);
         return predecessors;
     }
 
-    for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n)
-    {
+    for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
         if (address[n] == from)
             s = n;
     }
 
-    for (SmartDigraph::InArcIt a(g, s); a != INVALID && s != INVALID; ++a)
-    {
+    for (SmartDigraph::InArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         predecessors.insert(address[g.source(a)]);
     }
 
-    for (auto &it : predecessors)
-    {
+    for (auto &it : predecessors) {
         output += it + ",";
     }
 
@@ -318,11 +286,10 @@ unordered_set<string> find_predecessors(string from)
         // Do nothing for now.
     }
 
-    /* Cache response in Redis */
+    // Cache response in Redis
     redisCommand(ctx, "SETEX P_%s 14400 %s", from.c_str(), output.c_str());
 
-    if (ctx)
-    {
+    if (ctx) {
         redisDisconnect(ctx);
     }
 
@@ -338,7 +305,6 @@ int server_start_listen()
 
     int server_fd;
     int ret_bind = 1;
-    int yes = 1;
 
     memset(&hostinfo, 0, sizeof(hostinfo));
 
@@ -349,14 +315,16 @@ int server_start_listen()
     getaddrinfo(NULL, PORT, &hostinfo, &res);
 
     server_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    int ret_setsockopt = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
     while (ret_bind != 0) {
+        cerr << "Trying to kill already running process..." << endl;
+        int ret_system = system("for pid in `ps aux | grep bitiodine_server | grep -v SCREEN | grep -v grep | grep -v .sh | col | awk '{ print $2; }' | sort -r | head -n-1`; do kill -9 $pid; done; sleep 3;");
+        if (ret_system) {
+            cerr << "system() returned " << ret_system << "." << endl;
+        }
+
         ret_bind = ::bind(server_fd, res->ai_addr, res->ai_addrlen);
         cerr << "bind() returned: " << strerror(errno) << endl;
-        cerr << "Trying to kill already running process..." << endl;
-        int ret_system = system("for pid in `ps aux | grep bitiodine_server | grep -v SCREEN | grep -v grep | grep -v .sh | col | awk '{ print $2; }' | sort -r | head -n-1`; do kill -9 $pid; done;");
-        cerr << "system() returned " << ret_system << "." << endl;
     }
 
     int ret_listen = listen(server_fd, BACKLOG);
@@ -373,7 +341,6 @@ int server_establish_connection(int server_fd)
 {
     char ipstr[INET_ADDRSTRLEN];
     int port;
-
     int new_fd;
     struct sockaddr_storage remote_info;
     socklen_t addr_size;
@@ -396,15 +363,16 @@ void server_send(int fd, string data)
     send(fd, data.c_str(), strlen(data.c_str()), 0);
 }
 
-void tcp_server_read(int rfd)
+void server_thread(int rfd)
 {
     char buf[MAXLEN];
 
-    for (;;)
-    {
+    // Send welcome message
+    server_send(rfd, welcome_msg);
+
+    for (;;) {
         int buflen = read(rfd, buf, sizeof(buf));
-        if (buflen <= 0)
-        {
+        if (buflen <= 0) {
             cerr << "Client disconnected. Clearing fd " << rfd << endl;
             close(rfd);
             return;
@@ -419,23 +387,19 @@ void mainloop(int server_fd)
 {
     string welcome_msg = "200 BitIodine 1.0.0 READY\n";
 
-    for (;;)
-    {
+    for (;;) {
         int rfd = server_establish_connection(server_fd);
 
-        if (rfd >= 0)
-        {
+        if (rfd >= 0) {
             cerr << "Client connected. Using file descriptor " << rfd << endl;
-            if (rfd > MAXFD)
-            {
+            if (rfd > MAXFD) {
                 cerr << "Too many clients are trying to connect." << endl;
                 close(rfd);
                 continue;
             }
 
-            server_send(rfd, welcome_msg);
-
-            thread newthread (tcp_server_read, rfd);
+            // Spawn a new thread and detach it immediately
+            thread(server_thread, rfd).detach();
         }
     }
 }
@@ -452,32 +416,24 @@ void do_command(char *command_c, int client)
         return;
     }
 
-    if (tokens[0] == "SHORTEST_PATH_A2A")
-    {
-        if (tokens.size() < 3)
-        {
+    if (tokens[0] == "SHORTEST_PATH_A2A") {
+        if (tokens.size() < 3) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
 
         output = find_path(tokens[1], tokens[2]);
 
-        if (!output.empty())
-        {
+        if (!output.empty()) {
             server_send(client, "BEGIN\n");
             server_send(client, output);
             server_send(client, "END\n");
-        }
-        else
-        {
+        } else {
             server_send(client, "500 No path.\n");
         }
         return;
-    }
-    else if (tokens[0] == "SUCCESSORS")
-    {
-        if (tokens.size() < 2)
-        {
+    } else if (tokens[0] == "SUCCESSORS") {
+        if (tokens.size() < 2) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
@@ -486,10 +442,8 @@ void do_command(char *command_c, int client)
 
         unordered_set<string> successors = find_successors(tokens[1]);
 
-        if (!successors.empty())
-        {
-            for (auto &it : successors)
-            {
+        if (!successors.empty()) {
+            for (auto &it : successors) {
                 output += it + ",";
             }
 
@@ -502,15 +456,11 @@ void do_command(char *command_c, int client)
 
             server_send(client, output + "\n");
             server_send(client, "END\n");
-        }
-        else
+        } else
             server_send(client, "500 No successors.\n");
         return;
-    }
-    else if (tokens[0] == "PREDECESSORS")
-    {
-        if (tokens.size() < 2)
-        {
+    } else if (tokens[0] == "PREDECESSORS") {
+        if (tokens.size() < 2) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
@@ -519,10 +469,8 @@ void do_command(char *command_c, int client)
 
         unordered_set<string> predecessors = find_predecessors(tokens[1]);
 
-        if (!predecessors.empty())
-        {
-            for (auto &it : predecessors)
-            {
+        if (!predecessors.empty()) {
+            for (auto &it : predecessors) {
                 output += it + ",";
             }
 
@@ -535,60 +483,45 @@ void do_command(char *command_c, int client)
 
             server_send(client, output + "\n");
             server_send(client, "END\n");
-        }
-        else
+        } else
             server_send(client, "500 No predecessors.\n");
         return;
-    }
-    else if (tokens[0] == "PRINT_CLUSTER")
-    {
+    } else if (tokens[0] == "PRINT_CLUSTER") {
         int cluster;
 
-        if (tokens.size() < 2)
-        {
+        if (tokens.size() < 2) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
 
-        try
-        {
+        try {
             print_cluster(client, stoi(tokens[1]));
-        }
-        catch (std::invalid_argument e)
-        {
+        } catch (std::invalid_argument e) {
             server_send(client, "500 Arguments error.\n");
         }
 
         return;
-    }
-    else if (tokens[0] == "PRINT_NEIGHBORS")
-    {
+    } else if (tokens[0] == "PRINT_NEIGHBORS") {
         int cluster;
 
-        if (tokens.size() < 2)
-        {
+        if (tokens.size() < 2) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
 
         unordered_map<string, int>::const_iterator got = clusters.find(tokens[1]);
 
-        if (got == clusters.end())
-        {
+        if (got == clusters.end()) {
             server_send(client, "500 Address not present in any cluster.\n");
             return;
-        }
-        else
-        {
+        } else {
             cluster = got->second;
         }
 
         print_cluster(client, cluster);
 
         return;
-    }
-    else if (tokens[0] == "STATS")
-    {
+    } else if (tokens[0] == "STATS") {
         server_send(client, "BEGIN\n");
         server_send(client, to_string(countNodes(g)));
         server_send(client, "\n");
@@ -596,13 +529,9 @@ void do_command(char *command_c, int client)
         server_send(client, "\nEND\n");
 
         return;
-    }
-    else if (tokens[0] == "QUIT")
-    {
+    } else if (tokens[0] == "QUIT") {
         exit(0);
-    }
-    else
-    {
+    } else {
         server_send(client, "404 COMMAND NOT FOUND\n");
     }
 }
