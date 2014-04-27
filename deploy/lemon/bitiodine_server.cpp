@@ -375,7 +375,7 @@ int server_start_listen()
         ret_bind = ::bind(server_fd, res->ai_addr, res->ai_addrlen);
         cerr << "bind() returned: " << strerror(errno) << endl;
         cerr << "Trying to kill already running process..." << endl;
-        int ret_system = system("for pid in `ps aux | grep bitiodine_server | grep -v SCREEN | grep -v grep | col | awk '{ print $2; }' | sort | head -n-1`; do kill -9 $pid; done;");
+        int ret_system = system("for pid in `ps aux | grep bitiodine_server | grep -v SCREEN | grep -v grep | grep -v .sh | col | awk '{ print $2; }' | sort | head -n-1`; do kill -9 $pid; done;");
         cerr << "system() returned " << ret_system << "." << endl;
     }
 
