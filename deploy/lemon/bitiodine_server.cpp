@@ -11,6 +11,7 @@
 #include <lemon/smart_graph.h>
 #include <list>
 #include <netdb.h>
+#include <regex>
 #include <sstream>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -25,6 +26,7 @@
 using namespace lemon;
 using namespace std;
 
+bool bitcoin_address_regex_valid(string address);
 void do_command(char *command_c, int client);
 string find_path(string from, string to);
 unordered_set<string> find_predecessors(string from);
@@ -54,6 +56,12 @@ vector<string> tokenize(string const &input)
     istringstream str(input);
     istream_iterator<string> cur(str), end;
     return vector<string>(cur, end);
+}
+
+bool bitcoin_address_regex_valid(string address)
+{
+    regex r ("^1[1-9A-HJ-NP-Za-km-z]{26,33}$");
+    return regex_match(address, r);
 }
 
 int main()
@@ -415,7 +423,7 @@ void do_command(char *command_c, int client)
     }
 
     if (tokens[0] == "SHORTEST_PATH_A2A") {
-        if (tokens.size() < 3) {
+        if (tokens.size() < 3 || !bitcoin_address_regex_valid(tokens[1]) || !bitcoin_address_regex_valid(tokens[2])) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
@@ -458,7 +466,7 @@ void do_command(char *command_c, int client)
             server_send(client, "500 No successors.\n");
         return;
     } else if (tokens[0] == "PREDECESSORS") {
-        if (tokens.size() < 2) {
+        if (tokens.size() < 2 || !bitcoin_address_regex_valid(tokens[1])) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
@@ -502,7 +510,7 @@ void do_command(char *command_c, int client)
     } else if (tokens[0] == "PRINT_NEIGHBORS") {
         int cluster;
 
-        if (tokens.size() < 2) {
+        if (tokens.size() < 2 || !bitcoin_address_regex_valid(tokens[1])) {
             server_send(client, "500 Arguments error.\n");
             return;
         }
