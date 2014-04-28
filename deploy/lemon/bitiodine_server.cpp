@@ -26,7 +26,7 @@ using namespace lemon;
 using namespace std;
 
 // Allowed characters in a Bitcoin address
-#define BITCOIN_CHARSET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+#define BITCOIN_CHARSET "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 bool bitcoin_address_quick_valid(string address);
 void do_command(char *command_c, int client);
