@@ -80,10 +80,10 @@ for tx_id in range(min_txid, max_txid_res + 1):
   for out in out_res:
     out_address = out[0]
     if out_address is not None:
-      dest = users.get(dest_addr)
+      dest = users.get(out_address)
 
       if dest is None:
-        dest = dest_addr
+        dest = out_address
         dest_is_addr = True
 
       out_addr.add(out_address)
