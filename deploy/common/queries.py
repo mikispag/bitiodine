@@ -36,7 +36,23 @@ time_query = """
 number_of_transactions_address_so_far_query = "SELECT COUNT(*) FROM txout TOUT JOIN txin TI ON TOUT.tx_id = TI.tx_id WHERE TOUT.tx_id < ? AND TOUT.address = ?"
 used_so_far_query = "SELECT EXISTS(SELECT * FROM txout TOUT JOIN txin TI ON TOUT.tx_id = TI.tx_id WHERE TOUT.tx_id < ? AND TOUT.address = ?)"
 
-txhash_to_txid_query = "SELECT tx_id FROM tx WHERE tx_hash = ?"
+# Return the amount of transactions that is associate with those block times within a interval of time.
+number_of_transactions_between_time_interval = """
+						SELECT count(*) 
+							FROM tx LEFT JOIN blocks 
+							ON (tx.block_id = blocks.block_id) 
+						WHERE blocks.time >= ? AND blocks.time <= ?
+"""
+
+# Return the minimum and maximum transaction ids associate wih blocks inside a given time interval.
+max_min_transaction_ids_time_interval = """
+					SELECT MIN(tx.tx_id), MAX(tx.tx_id) 
+						FROM tx LEFT JOIN blocks 
+						ON (tx.block_id = blocks.block_id) 
+					WHERE blocks.time >= ? AND blocks.time <= ?
+"""
+
+txhash_to_txid_query = "SELECT tx_id FROM tx WHERE tx_hash = ?"""
 max_txid_query = "SELECT MAX(tx_id) FROM tx"
 max_block_query = "SELECT MAX(block_id) FROM blocks"
 last_seen_query = "SELECT last_seen FROM addresses WHERE address = ?"
