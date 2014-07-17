@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import networkx as nx
 
+import argparse
+import math
+
 import os, sys
 lib_path = os.path.abspath('../common')
 sys.path.append(lib_path)
@@ -10,8 +13,13 @@ from queries import *
 from util import *
 
 ###
-FILENAME = "users_graph"
 db = SQLiteWrapper('../blockchain/blockchain.sqlite')
+
+parser = argparse.ArgumentParser(description='Generate user graph based on transactions on a time interval desired')
+parser.add_argument("--min-time", dest="min_time")
+parser.add_argument("--max-time", dest="max_time")
+parser.add_argument("--out-filename", dest="output_filename")
+args = parser.parse_args()
 
 # Load clusters
 with open("../clusterizer/clusters.dat", "rb") as infile:
@@ -24,7 +32,9 @@ users = stripSingletons(users)
 print("Singletons stripped - %d addresses." % len(users))
 
 try:
-  max_txid_res = db.query(max_txid_query, fetch_one=True)
+  amount_txids = db.query(number_of_transactions_between_time_interval, (args.min_time, args.max_time,))[0][0]
+  min_tx_id, max_tx_id = db.query(max_min_transaction_ids_time_interval, (args.min_time, args.max_time,))[0]
+ 
 except Exception as e:
   die(e)
 
@@ -32,20 +42,20 @@ G = nx.DiGraph()
 min_txid = 1
 
 try:
-  G, min_txid = load(FILENAME)
+  G, min_tx_id = load(args.output_filename)
 except:
   pass
 
-print("Scanning %d transactions, starting from %d." %(max_txid_res, min_txid))
+print("Scanning %d transactions, starting from %d." %(amount_txids, min_tx_id))
 
-for tx_id in range(min_txid, max_txid_res + 1):
+for tx_id in range(min_tx_id, max_tx_id+1):
 
   source_is_addr, dest_is_addr = False, False
 
   # Save progress to files
-  if tx_id % 1000000 == 0:
+  if math.fabs(tx_id - 1000000) % 1000000 == 0:
     print("TRANSACTION ID: %d" % (tx_id))
-    save(G, FILENAME, tx_id)
+    save(G, args.output_filename, tx_id)
     print(nx.number_of_nodes(G), "nodes,", nx.number_of_edges(G), "edges so far.")
 
   try:
@@ -98,4 +108,4 @@ for tx_id in range(min_txid, max_txid_res + 1):
     for out_address in out_addr:
       G.add_edge(in_address, out_address, tx_hash=tx_hash)
 
-save(G, FILENAME, tx_id)
+save(G, args.output_filename, tx_id)
