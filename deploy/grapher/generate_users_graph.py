@@ -91,12 +91,11 @@ for tx_id in range(min_tx_id, max_tx_id+1):
     out_address = out[0]
     if out_address is not None:
       dest = users.get(out_address)
-
-      if dest is None:
+      if not dest:
         dest = out_address
-        dest_is_addr = True
-
-      out_addr.add(out_address)
+      
+      out_addr.add(str(dest))
+     
 
   for in_address in in_addr:
     G.add_node(in_address)
