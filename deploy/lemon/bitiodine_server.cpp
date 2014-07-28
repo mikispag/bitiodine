@@ -28,6 +28,9 @@ using namespace std;
 // Allowed characters in a Bitcoin address
 #define BITCOIN_CHARSET "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
+// Enable Redis?
+#define USE_REDIS 0
+
 bool bitcoin_address_quick_valid(string address);
 void do_command(char *command_c, int client);
 string find_path(string from, string to);
@@ -129,22 +132,24 @@ string find_path(string from, string to)
     ostringstream oss;
     string redis_reply = "";
 
-    redisContext *ctx;
-    ctx = redisConnect("127.0.0.1", 6379);
+    if (USE_REDIS) {
+        redisContext *ctx;
+        ctx = redisConnect("127.0.0.1", 6379);
 
-    if (ctx->err) {
-        cerr << "Error: " << ctx->errstr << endl;
-    }
+        if (ctx->err) {
+            cerr << "Error: " << ctx->errstr << endl;
+        }
 
-    // Check for cached response in Redis
-    if (ctx) {
-        redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
-        redis_reply = getRedisString(reply);
-    }
+        // Check for cached response in Redis
+        if (ctx) {
+            redisReply *reply = (redisReply *) redisCommand(ctx, "GET %s:%s", from.c_str(), to.c_str());
+            redis_reply = getRedisString(reply);
+        }
 
-    if (!redis_reply.empty()) {
-        cerr << "Returning cached response for " << from << ":" << to << endl;
-        return redis_reply;
+        if (!redis_reply.empty()) {
+            cerr << "Returning cached response for " << from << ":" << to << endl;
+            return redis_reply;
+        }
     }
 
     for (SmartDigraph::NodeIt n(g); (s == INVALID || t == INVALID) && n != INVALID; ++n) {
@@ -187,11 +192,13 @@ string find_path(string from, string to)
     oss << endl;
     string path = oss.str();
 
-    // Cache response in Redis
-    redisCommand(ctx, "SETEX %s:%s 14400 %s", from.c_str(), to.c_str(), path.c_str());
+    if (USE_REDIS) {
+        // Cache response in Redis
+        redisCommand(ctx, "SETEX %s:%s 14400 %s", from.c_str(), to.c_str(), path.c_str());
 
-    if (ctx) {
-        redisDisconnect(ctx);
+        if (ctx) {
+            redisDisconnect(ctx);
+        }
     }
 
     return path;
@@ -204,23 +211,25 @@ unordered_set<string> find_successors(string from)
 
     string redis_reply, output;
 
-    redisContext *ctx;
-    ctx = redisConnect("127.0.0.1", 6379);
+    if (USE_REDIS) {
+        redisContext *ctx;
+        ctx = redisConnect("127.0.0.1", 6379);
 
-    if (ctx->err) {
-        cerr << "Error: " << ctx->errstr << endl;
-    }
+        if (ctx->err) {
+            cerr << "Error: " << ctx->errstr << endl;
+        }
 
-    /* Check for cached response in Redis */
-    if (ctx) {
-        redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
-        redis_reply = getRedisString(reply);
-    }
+        /* Check for cached response in Redis */
+        if (ctx) {
+            redisReply *reply = (redisReply *) redisCommand(ctx, "GET S_%s", from.c_str());
+            redis_reply = getRedisString(reply);
+        }
 
-    if (!redis_reply.empty()) {
-        cerr << "Returning cached response for S_" << from << endl;
-        successors.insert(redis_reply);
-        return successors;
+        if (!redis_reply.empty()) {
+            cerr << "Returning cached response for S_" << from << endl;
+            successors.insert(redis_reply);
+            return successors;
+        }
     }
 
     for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
@@ -243,11 +252,13 @@ unordered_set<string> find_successors(string from)
         // Do nothing for now.
     }
 
-    // Cache response in Redis
-    redisCommand(ctx, "SETEX S_%s 14400 %s", from.c_str(), output.c_str());
+    if (USE_REDIS) {
+        // Cache response in Redis
+        redisCommand(ctx, "SETEX S_%s 14400 %s", from.c_str(), output.c_str());
 
-    if (ctx) {
-        redisDisconnect(ctx);
+        if (ctx) {
+            redisDisconnect(ctx);
+        }
     }
 
     return successors;
@@ -261,23 +272,25 @@ unordered_set<string> find_predecessors(string from)
     string redis_reply = "";
     string output = "";
 
-    redisContext *ctx;
-    ctx = redisConnect("127.0.0.1", 6379);
+    if (USE_REDIS) {
+        redisContext *ctx;
+        ctx = redisConnect("127.0.0.1", 6379);
 
-    if (ctx->err) {
-        cerr << "Error: " << ctx->errstr << endl;
-    }
+        if (ctx->err) {
+            cerr << "Error: " << ctx->errstr << endl;
+        }
 
-    /* Check for cached response in Redis */
-    if (ctx) {
-        redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
-        redis_reply = getRedisString(reply);
-    }
+        /* Check for cached response in Redis */
+        if (ctx) {
+            redisReply *reply = (redisReply *) redisCommand(ctx, "GET P_%s", from.c_str());
+            redis_reply = getRedisString(reply);
+        }
 
-    if (!redis_reply.empty()) {
-        cerr << "Returning cached response for P_" << from << endl;
-        predecessors.insert(redis_reply);
-        return predecessors;
+        if (!redis_reply.empty()) {
+            cerr << "Returning cached response for P_" << from << endl;
+            predecessors.insert(redis_reply);
+            return predecessors;
+        }
     }
 
     for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
@@ -300,11 +313,13 @@ unordered_set<string> find_predecessors(string from)
         // Do nothing for now.
     }
 
-    // Cache response in Redis
-    redisCommand(ctx, "SETEX P_%s 14400 %s", from.c_str(), output.c_str());
+    if (USE_REDIS) {
+        // Cache response in Redis
+        redisCommand(ctx, "SETEX P_%s 14400 %s", from.c_str(), output.c_str());
 
-    if (ctx) {
-        redisDisconnect(ctx);
+        if (ctx) {
+            redisDisconnect(ctx);
+        }
     }
 
     return predecessors;
