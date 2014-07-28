@@ -131,9 +131,9 @@ string find_path(string from, string to)
     int d;
     ostringstream oss;
     string redis_reply = "";
+    redisContext *ctx;
 
     if (USE_REDIS) {
-        redisContext *ctx;
         ctx = redisConnect("127.0.0.1", 6379);
 
         if (ctx->err) {
@@ -210,9 +210,9 @@ unordered_set<string> find_successors(string from)
     unordered_set<string> successors;
 
     string redis_reply, output;
+    redisContext *ctx;
 
     if (USE_REDIS) {
-        redisContext *ctx;
         ctx = redisConnect("127.0.0.1", 6379);
 
         if (ctx->err) {
@@ -271,9 +271,9 @@ unordered_set<string> find_predecessors(string from)
 
     string redis_reply = "";
     string output = "";
+    redisContext *ctx;
 
     if (USE_REDIS) {
-        redisContext *ctx;
         ctx = redisConnect("127.0.0.1", 6379);
 
         if (ctx->err) {
