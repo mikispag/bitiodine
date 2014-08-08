@@ -189,7 +189,7 @@ class BitIodine {
 		return new Vector($response_array);
 	}
 
-	public static function predecessors(string $address): Vector<string> {
+	public static function predecessors(string $address): Set<string> {
 		$redis = RedisWrapper::getRedis();
 
 		$response_array = new Vector();
@@ -246,10 +246,10 @@ class BitIodine {
 		$response_array->pop();
 		$response_array->removeKey(0);
 		write_log((!is_null($cached)), $request, "OK");
-		return new Vector(explode(',', $response_array[0]));
+		return new Set(explode(',', $response_array[0]));
 	}
 
-	public static function successors(string $address): Vector<string> {
+	public static function successors(string $address): Set<string> {
 		$redis = RedisWrapper::getRedis();
 
 		$response_array = new Vector();
@@ -306,6 +306,6 @@ class BitIodine {
 		$response_array->pop();
 		$response_array->removeKey(0);
 		write_log((!is_null($cached)), $request, "OK");
-		return new Vector(explode(',', $response_array[0]));
+		return new Set(explode(',', $response_array[0]));
 	}
 }
