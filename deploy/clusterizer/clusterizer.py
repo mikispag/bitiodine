@@ -20,7 +20,7 @@ import csv
 ###
 
 FILENAME = "clusters"
-FIX_TIME = 1329523200
+FIX_TIME = 0	# timestamp of fix of bitcoind bug - 0 to disable
 
 parser = argparse.ArgumentParser(description="BitIodine Clusterizer: groups addresses in ownership clusters.")
 parser.add_argument('-d', dest='db', default="../blockchain/blockchain.sqlite",
@@ -84,11 +84,8 @@ if options.generate:
 				continue
 			pos = users.get(address)
 			if pos is not None:
-				users[address] = pos
 				found = pos
-			break
-		else:
-			continue
+				break
 
 		if found is None:
 			max_cluster_id += 1
