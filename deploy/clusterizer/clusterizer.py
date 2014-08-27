@@ -83,9 +83,12 @@ if options.generate:
 			if address is None:
 				continue
 			pos = users.get(address)
-			if pos is not None:
+			if found is not None and pos != found:
+				for address, cluster in users.items():
+					if cluster == pos:
+						users[address] = found
+			if pos is not None and found is None:
 				found = pos
-				break
 
 		if found is None:
 			max_cluster_id += 1
