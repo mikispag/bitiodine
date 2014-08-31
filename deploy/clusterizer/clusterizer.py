@@ -63,7 +63,7 @@ if options.generate:
 
 	for tx_id in range(min_txid, max_txid_res + 1):
 		# Save progress to files
-		if tx_id % 1000000 == 0 and not loaded:
+		if tx_id % 100000 == 0 and not loaded:
 			print("TRANSACTION ID: %d" % (tx_id))
 			save(users, FILENAME, tx_id)
 
@@ -83,7 +83,7 @@ if options.generate:
 			if address is None:
 				continue
 			pos = users.get(address)
-			if found is not None and pos != found:
+			if found is not None and pos != found and pos in users.values():
 				for address, cluster in users.items():
 					if cluster == pos:
 						users[address] = found
