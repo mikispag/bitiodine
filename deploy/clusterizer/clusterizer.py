@@ -101,7 +101,7 @@ if options.generate:
 		for address in in_res:
 			old_cluster = users.get(address[0])
 			if old_cluster is not None:
-				users_cache[old_cluster].remove(address)
+				users_cache[old_cluster].remove(address[0])
 			users_cache[found].add(address[0])
 			users[address[0]] = found
 
