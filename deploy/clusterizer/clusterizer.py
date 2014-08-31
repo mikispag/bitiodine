@@ -91,10 +91,10 @@ if options.generate:
 				continue
 			pos = users.get(address)
 			if found is not None and pos != found:
-				for address in list(users_cache[pos]):
+				for address in users_cache[pos]:
 					users_cache[found].add(address)
-					users_cache[pos].discard(address)
 					users[address] = found
+				users_cache[pos] = set()
 			if pos is not None and found is None:
 				found = pos
 
