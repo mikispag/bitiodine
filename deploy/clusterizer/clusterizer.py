@@ -46,8 +46,15 @@ if options.generate:
 		die(e)
 
 	users, loaded = {}, False
+
+	# Keep a cache for efficient value -> keys querying
+	users_cache = defaultdict(set)
+
 	try:
 		users, min_txid = load(FILENAME)
+		# Build cache
+		for address, cluster in users:
+			users_cache[custer].add(address)
 		loaded = True
 	except:
 		min_txid = 1
@@ -60,9 +67,6 @@ if options.generate:
 		max_cluster_id = 0
 
 	print("Scanning %d transactions, starting from %d." %(max_txid_res, min_txid))
-
-	# Keep a cache for efficient value -> keys querying
-	users_cache = defaultdict(set)
 
 	for tx_id in range(min_txid, max_txid_res + 1):
 		# Save progress to files
