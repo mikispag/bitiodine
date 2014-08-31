@@ -53,7 +53,7 @@ if options.generate:
 	try:
 		users, min_txid = load(FILENAME)
 		# Build cache
-		for address, cluster in users:
+		for address, cluster in users.items():
 			users_cache[cluster].add(address)
 		loaded = True
 	except:
