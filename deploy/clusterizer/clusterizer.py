@@ -9,14 +9,14 @@ sys.path.append(lib_path)
 from sqlite_wrapper import SQLiteWrapper
 from queries import *
 from util import *
-from collections import Counter
+from collections import Counter, defaultdict
 from pprint import pprint
 from datetime import datetime
 
 import argparse
-import itertools
-import numpy
 import csv
+import numpy
+import operator
 ###
 
 FILENAME = "clusters"
@@ -61,6 +61,9 @@ if options.generate:
 
 	print("Scanning %d transactions, starting from %d." %(max_txid_res, min_txid))
 
+	# Keep a cache for efficient value -> keys querying
+	users_cache = defaultdict(set)
+
 	for tx_id in range(min_txid, max_txid_res + 1):
 		# Save progress to files
 		if tx_id % 100000 == 0 and not loaded:
@@ -83,10 +86,11 @@ if options.generate:
 			if address is None:
 				continue
 			pos = users.get(address)
-			if found is not None and pos != found and pos in users.values():
-				for address, cluster in users.items():
-					if cluster == pos:
-						users[address] = found
+			if found is not None and pos != found:
+				for address in users_cache[pos]:
+					users[address] = found
+					users_cache[found].add(address)
+					users_cache[pos].remove(address)
 			if pos is not None and found is None:
 				found = pos
 
@@ -96,6 +100,7 @@ if options.generate:
 
 		for address in in_res:
 			users[address[0]] = found
+			users_cache[found].add(address[0])
 
 		# OUT - Heuristic 2 - shadow addresses
 		# Exploit bitcoin client bug - "change never last output"
@@ -126,9 +131,11 @@ if options.generate:
 				# 
 				# so only applies to transactions happened before 18 Feb 2013 (UNIX TIMESTAMP - FIX_TIME: 1329523200)
 				users[address1] = found
+				users_cache[found].add(address1)
 			elif appeared2_res == 0 and appeared1_res == 1:
 				# This is deterministic - last address is actually a shadow address
 				users[address2] = found
+				users_cache[found].add(address2)
 
 	users = save(users, FILENAME, max_txid_res)
 
