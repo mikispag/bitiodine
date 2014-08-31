@@ -87,10 +87,10 @@ if options.generate:
 				continue
 			pos = users.get(address)
 			if found is not None and pos != found:
-				for address in users_cache[pos]:
-					users[address] = found
+				for address in list(users_cache[pos]):
 					users_cache[found].add(address)
 					users_cache[pos].remove(address)
+					users[address] = found
 			if pos is not None and found is None:
 				found = pos
 
@@ -99,8 +99,11 @@ if options.generate:
 			found = max_cluster_id
 
 		for address in in_res:
-			users[address[0]] = found
+			old_cluster = users.get(address[0])
+			if old_cluster is not None:
+				users_cache[old_cluster].remove(address)
 			users_cache[found].add(address[0])
+			users[address[0]] = found
 
 		# OUT - Heuristic 2 - shadow addresses
 		# Exploit bitcoin client bug - "change never last output"
@@ -130,12 +133,18 @@ if options.generate:
 				# Next release: 0.8.0 on 18 Feb 2013
 				# 
 				# so only applies to transactions happened before 18 Feb 2013 (UNIX TIMESTAMP - FIX_TIME: 1329523200)
-				users[address1] = found
 				users_cache[found].add(address1)
+				old_cluster = users.get(address1)
+				if old_cluster is not None:
+					users_cache[old_cluster].remove(address1)
+				users[address1] = found
 			elif appeared2_res == 0 and appeared1_res == 1:
 				# This is deterministic - last address is actually a shadow address
-				users[address2] = found
 				users_cache[found].add(address2)
+				old_cluster = users.get(address2)
+				if old_cluster is not None:
+					users_cache[old_cluster].remove(address2)
+				users[address2] = found
 
 	users = save(users, FILENAME, max_txid_res)
 
