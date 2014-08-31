@@ -93,7 +93,7 @@ if options.generate:
 			if found is not None and pos != found:
 				for address in list(users_cache[pos]):
 					users_cache[found].add(address)
-					users_cache[pos].remove(address)
+					users_cache[pos].discard(address)
 					users[address] = found
 			if pos is not None and found is None:
 				found = pos
@@ -105,7 +105,7 @@ if options.generate:
 		for address in in_res:
 			old_cluster = users.get(address[0])
 			if old_cluster is not None:
-				users_cache[old_cluster].remove(address[0])
+				users_cache[old_cluster].discard(address[0])
 			users_cache[found].add(address[0])
 			users[address[0]] = found
 
@@ -140,14 +140,14 @@ if options.generate:
 				users_cache[found].add(address1)
 				old_cluster = users.get(address1)
 				if old_cluster is not None:
-					users_cache[old_cluster].remove(address1)
+					users_cache[old_cluster].discard(address1)
 				users[address1] = found
 			elif appeared2_res == 0 and appeared1_res == 1:
 				# This is deterministic - last address is actually a shadow address
 				users_cache[found].add(address2)
 				old_cluster = users.get(address2)
 				if old_cluster is not None:
-					users_cache[old_cluster].remove(address2)
+					users_cache[old_cluster].discard(address2)
 				users[address2] = found
 
 	users = save(users, FILENAME, max_txid_res)
