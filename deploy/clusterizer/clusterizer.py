@@ -54,7 +54,7 @@ if options.generate:
 		users, min_txid = load(FILENAME)
 		# Build cache
 		for address, cluster in users:
-			users_cache[custer].add(address)
+			users_cache[cluster].add(address)
 		loaded = True
 	except:
 		min_txid = 1
@@ -66,7 +66,7 @@ if options.generate:
 		# users is empty
 		max_cluster_id = 0
 
-	print("Scanning %d transactions, starting from %d." %(max_txid_res, min_txid))
+	print("Scanning %d transactions, starting from %d." % (max_txid_res, min_txid))
 
 	for tx_id in range(min_txid, max_txid_res + 1):
 		# Save progress to files
