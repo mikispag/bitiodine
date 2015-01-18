@@ -29,7 +29,6 @@ if (!isset($_GET['from']) || !isset($_GET['to'])) {
         $balances = BlockChain::get_balances($address_path);
     } catch (Exception $e) {
         $error_message = $e->getMessage();
-        print_r($e->getTrace());
     }
 
 }

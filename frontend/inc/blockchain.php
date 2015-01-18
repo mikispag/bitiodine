@@ -107,29 +107,7 @@ class BlockChain {
 		return new ImmMap($tx_values);
 	}
 
-	public static function get_balances_from_list(Vector<string> $addresses): Vector<string> {
-		$balances = new Vector();
-		$addresses_chunks = array_chunk($addresses, 20);
-		foreach ($addresses_chunks as $addresses_chunk) {
-			$url = "http://btc.blockr.io/api/v1/address/balance/" . implode(",", $addresses_chunk);
-			$json = file_get_contents($url);
-			if ($json === FALSE) {
-				throw new RuntimeException("Unable to retrieve balances.");
-			}
-			$json_arr = json_decode($json, true);
-			for ($balance_id = 0; $balance_id < count($addresses_chunk); $balance_id++) {
-				if (!isset($json_arr["data"][0])) {
-					$balance = $json_arr["data"]["balance"];
-				} else {
-					$balance = $json_arr["data"][$balance_id]["balance"];
-				}
-				$balances[] = number_format($balance, 2);
-			}
-		}
-		return $balances;
-	}
-
-	public static function get_balances(Vector<string> $addresses): ImmMap<string, string> {
+	public static function get_balances(Iterable<string> $addresses): ImmMap<string, string> {
 		$redis = RedisWrapper::getRedis();
 		$balances = array();
 		$addresses_to_query = new Vector();
@@ -153,6 +131,28 @@ class BlockChain {
 
 		arsort($balances);
 		return new ImmMap($balances);
+	}
+
+	private static function get_balances_from_list(Vector<string> $addresses): Vector<string> {
+		$balances = new Vector();
+		$addresses_chunks = array_chunk($addresses, 20);
+		foreach ($addresses_chunks as $addresses_chunk) {
+			$url = "http://btc.blockr.io/api/v1/address/balance/" . implode(",", $addresses_chunk);
+			$json = file_get_contents($url);
+			if ($json === FALSE) {
+				throw new RuntimeException("Unable to retrieve balances.");
+			}
+			$json_arr = json_decode($json, true);
+			for ($balance_id = 0; $balance_id < count($addresses_chunk); $balance_id++) {
+				if (!isset($json_arr["data"][0])) {
+					$balance = $json_arr["data"]["balance"];
+				} else {
+					$balance = $json_arr["data"][$balance_id]["balance"];
+				}
+				$balances[] = number_format($balance, 2);
+			}
+		}
+		return $balances;
 	}
 
 }
