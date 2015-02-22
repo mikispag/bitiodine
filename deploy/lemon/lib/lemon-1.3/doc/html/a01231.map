@@ -1,7 +1,0 @@
-<map id="MappableBpGraphComponent&lt; BAS &gt;::BlueNodeMap&lt; V &gt;" name="MappableBpGraphComponent&lt; BAS &gt;::BlueNodeMap&lt; V &gt;">
-<area shape="rect" id="node2" href="$a00181.html" title="GraphMap\&lt; MappableBpGraph\lComponent, Node, V \&gt;" alt="" coords="41,246,247,287"/>
-<area shape="rect" id="node4" href="$a00321.html" title="ReferenceMap\&lt; Node,\l V, V &amp;, const V &amp; \&gt;" alt="" coords="68,155,220,197"/>
-<area shape="rect" id="node6" href="$a00313.html" title="ReadWriteMap\&lt; Node,V \&gt;" alt="" coords="57,80,231,107"/>
-<area shape="rect" id="node8" href="$a00312.html" title="ReadMap\&lt; K, T \&gt;" alt="" coords="5,5,133,32"/>
-<area shape="rect" id="node10" href="$a00431.html" title="WriteMap\&lt; K, T \&gt;" alt="" coords="157,5,283,32"/>
-</map>
