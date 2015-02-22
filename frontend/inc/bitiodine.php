@@ -13,10 +13,14 @@ class BitIodine {
 	private static $MAX_REPLY_SIZE = 500000;	// Lines
 	private static $HOURS_CACHE = 4;
 
+	private static $errstr = "";
+	private static $errno = 0;
+
 	public static function A2A(string $from, string $to): (int, Vector<string>, Vector<string>) {
 		$redis = RedisWrapper::getRedis();
+		$response = "";
 
-		$response_array = new Vector();
+		$response_array = Vector {};
 		$lines = 1;
 		$request = "A2A_$from:$to";
 
@@ -37,10 +41,10 @@ class BitIodine {
 
 		$cached = $redis->get($request);
 
-		if (!is_null($cached)) {
+		if ($cached) {
 			$response_array = new Vector(unserialize($cached));
 		} else {
-			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, $errno, $errstr, 5);
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
 			if (!$fp) {
 				write_log(false, $request, "SERVER_KO");
 			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
@@ -69,7 +73,7 @@ class BitIodine {
 		}
 
 		if ($response_array[0] == "500 No path.") {
-			write_log((!is_null($cached)), $request, "NO_PATH");
+			write_log((!$cached), $request, "NO_PATH");
 			throw new RuntimeException("There is no connection between the two addresses.", 404);
 		}
 
@@ -77,23 +81,24 @@ class BitIodine {
 		$address_path = new Vector(explode('>', $response_array[2]));
 		$tx_path = new Vector(explode('>', $response_array[3]));
 
-		write_log((!is_null($cached)), $request, "OK");
+		write_log((!$cached), $request, "OK");
 		return tuple($distance, $address_path, $tx_path);
 	}
 
 	public static function stats(): (int, int) {
 		$redis = RedisWrapper::getRedis();
+		$response = "";
 
-		$response_array = new Vector();
+		$response_array = Vector {};
 		$lines = 1;
 		$request = "STATS";
 
 		$cached = $redis->get($request);
 
-		if (!is_null($cached)) {
+		if ($cached) {
 			$response_array = new Vector(unserialize($cached));
 		} else {
-			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, $errno, $errstr, 5);
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
 			if (!$fp) {
 				write_log(false, $request, "SERVER_KO");
 			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
@@ -125,14 +130,15 @@ class BitIodine {
 		$nodes = intval($response_array[1]);
 		$arcs = intval($response_array[2]);
 
-		write_log((!is_null($cached)), $request, "OK");
+		write_log((!$cached), $request, "OK");
 		return tuple($nodes, $arcs);
 	}
 
 	public static function neighbors(string $address): Vector<string> {
 		$redis = RedisWrapper::getRedis();
+		$response = "";
 
-		$response_array = new Vector();
+		$response_array = Vector {};
 		$lines = 1;
 		$request = "N_$address";
 
@@ -148,10 +154,10 @@ class BitIodine {
 
 		$cached = $redis->get($request);
 
-		if (!is_null($cached)) {
+		if ($cached) {
 			$response_array = new Vector(unserialize($cached));
 		} else {
-			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, $errno, $errstr, 5);
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
 			if (!$fp) {
 				write_log(false, $request, "SERVER_KO");
 			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
@@ -179,20 +185,21 @@ class BitIodine {
 		}
 
 		if ($response_array[0] == "500 Address not present in any cluster.") {
-			write_log((!is_null($cached)), $request, "NO_CLUSTER");
+			write_log((!$cached), $request, "NO_CLUSTER");
 			throw new RuntimeException("The address is not part of a cluster.");
 		}
 
 		$response_array->pop();
 		$response_array->removeKey(0);
-		write_log((!is_null($cached)), $request, "OK");
+		write_log((!$cached), $request, "OK");
 		return new Vector($response_array);
 	}
 
 	public static function predecessors(string $address): Set<string> {
 		$redis = RedisWrapper::getRedis();
+		$response = "";
 
-		$response_array = new Vector();
+		$response_array = Vector {};
 		$lines = 1;
 		$request = "P_$address";
 
@@ -208,10 +215,10 @@ class BitIodine {
 
 		$cached = $redis->get($request);
 
-		if (!is_null($cached)) {
+		if ($cached) {
 			$response_array = new Vector(unserialize($cached));
 		} else {
-			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, $errno, $errstr, 5);
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
 			if (!$fp) {
 				write_log(false, $request, "SERVER_KO");
 			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
@@ -239,20 +246,21 @@ class BitIodine {
 		}
 
 		if ($response_array[0] == "500 No predecessors.") {
-			write_log((!is_null($cached)), $request, "NO_PREDECESSORS");
+			write_log((!$cached), $request, "NO_PREDECESSORS");
 			throw new RuntimeException("The address has no predecessors.");
 		}
 
 		$response_array->pop();
 		$response_array->removeKey(0);
-		write_log((!is_null($cached)), $request, "OK");
+		write_log((!$cached), $request, "OK");
 		return new Set(explode(',', $response_array[0]));
 	}
 
 	public static function successors(string $address): Set<string> {
 		$redis = RedisWrapper::getRedis();
+		$response = "";
 
-		$response_array = new Vector();
+		$response_array = Vector {};
 		$lines = 1;
 		$request = "S_$address";
 
@@ -268,10 +276,10 @@ class BitIodine {
 
 		$cached = $redis->get($request);
 
-		if (!is_null($cached)) {
+		if ($cached) {
 			$response_array = new Vector(unserialize($cached));
 		} else {
-			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, $errno, $errstr, 5);
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
 			if (!$fp) {
 				write_log(false, $request, "SERVER_KO");
 			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
@@ -299,13 +307,13 @@ class BitIodine {
 		}
 
 		if ($response_array[0] == "500 No successors.") {
-			write_log((!is_null($cached)), $request, "NO_SUCCESSORS");
+			write_log((!$cached), $request, "NO_SUCCESSORS");
 			throw new RuntimeException("The address has no successors.");
 		}
 
 		$response_array->pop();
 		$response_array->removeKey(0);
-		write_log((!is_null($cached)), $request, "OK");
+		write_log((!$cached), $request, "OK");
 		return new Set(explode(',', $response_array[0]));
 	}
 }

@@ -47,7 +47,7 @@ class BlockChain {
 
 	public static function get_tx_values_from_list(Vector<string> $tx_path, Vector<string> $address_path): Vector<string> {
 		$n_tx = count($tx_path);
-		$tx_values = new Vector();
+		$tx_values = Vector {};
 		$tx_chunks = array_chunk($tx_path, 20);
 		$tx_id = 0;
 		foreach ($tx_chunks as $tx_chunk) {
@@ -75,8 +75,8 @@ class BlockChain {
 	public static function get_tx_values(Vector<string> $tx_path, Vector<string> $address_path): ImmMap<string, string> {
 		$redis = RedisWrapper::getRedis();
 
-		$tx_values = new Map();
-		$txs_to_query = new Vector();
+		$tx_values = Map {};
+		$txs_to_query = Vector {};
 
 		$address_path_int = $address_path->toVector();
 		$address_path_int->removeKey(0);
@@ -86,7 +86,7 @@ class BlockChain {
 			$address = $address_path_int[$index];
 			$cached = $redis->get("V_" . $tx . "_" . $address);
 
-			if (!is_null($cached)) {
+			if ($cached) {
 				$tx_values[$tx] = number_format($cached, 8);
 				$address_path_clean->removeKey($index);
 			} else {
@@ -110,12 +110,12 @@ class BlockChain {
 	public static function get_balances(Iterable<string> $addresses): ImmMap<string, string> {
 		$redis = RedisWrapper::getRedis();
 		$balances = array();
-		$addresses_to_query = new Vector();
+		$addresses_to_query = Vector {};
 
 		foreach ($addresses as $address) {
 			$cached = $redis->get("B_$address");
 
-			if (!is_null($cached)) {
+			if ($cached) {
 				$balances[$address] = number_format($cached, 2);
 			} else {
 				$addresses_to_query[] = $address;
@@ -134,7 +134,7 @@ class BlockChain {
 	}
 
 	private static function get_balances_from_list(Vector<string> $addresses): Vector<string> {
-		$balances = new Vector();
+		$balances = Vector {};
 		$addresses_chunks = array_chunk($addresses, 20);
 		foreach ($addresses_chunks as $addresses_chunk) {
 			$url = "http://btc.blockr.io/api/v1/address/balance/" . implode(",", $addresses_chunk);
