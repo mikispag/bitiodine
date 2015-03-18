@@ -25,7 +25,7 @@ class BlockChain {
 		$redis = RedisWrapper::getRedis();
 		$usd_price = $redis->get('btc_usd');
 
-		if (is_null($usd_price)) {
+		if (!$usd_price) {
 			try {
 				$btc_price = self::updateBTCPrice();
 			} catch (Exception $e) {
