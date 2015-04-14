@@ -16,9 +16,9 @@ from util import *
 db = SQLiteWrapper('../blockchain/blockchain.sqlite')
 
 parser = argparse.ArgumentParser(description='Generate user graph based on transactions on a time interval desired')
-parser.add_argument("--min-time", dest="min_time")
-parser.add_argument("--max-time", dest="max_time")
-parser.add_argument("--out-filename", dest="output_filename")
+parser.add_argument("--min-time", dest="min_time", default=0)
+parser.add_argument("--max-time", dest="max_time", default=2147483647)
+parser.add_argument("--out-filename", dest="output_filename", default="users_graph")
 args = parser.parse_args()
 
 # Load clusters
