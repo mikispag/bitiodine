@@ -20,7 +20,6 @@ import operator
 ###
 
 FILENAME = "clusters"
-FIX_TIME = 0	# timestamp of fix of bitcoind bug - 0 to disable
 
 parser = argparse.ArgumentParser(description="BitIodine Clusterizer: groups addresses in ownership clusters.")
 parser.add_argument('-d', dest='db', default="../blockchain/blockchain.sqlite",
@@ -78,77 +77,28 @@ if options.generate:
 
 		try:
 			in_res = db.query(in_query_addr, (tx_id,))
-			out_res = db.query(out_query_addr, (tx_id,))
 		except Exception as e:
 			print(e)
 			continue
 
 		# IN - Heuristic 1 - multi-input transactions
-		found = None
+		new_cluster_id = None
 		for line in in_res:
 			address = line[0]
-			if address is None:
+			if address is None or not address.startswith('1'):
 				continue
-			pos = users.get(address)
-			if found is not None and pos != found:
-				for address in users_cache[pos]:
-					users_cache[found].add(address)
-					users[address] = found
-				users_cache[pos] = set()
-			if pos is not None and found is None:
-				found = pos
+			current_cluster_id = users.get(address)
+			if new_cluster_id is not None and current_cluster_id != new_cluster_id:
+				for address in users_cache[current_cluster_id]:
+					users_cache[new_cluster_id].add(address)
+					users[address] = new_cluster_id
+				users_cache[current_cluster_id] = set()
+			if new_cluster_id is None and current_cluster_id is not None:
+				new_cluster_id = current_cluster_id
 
-		if found is None:
+		if new_cluster_id is None:
 			max_cluster_id += 1
-			found = max_cluster_id
-
-		for address in in_res:
-			old_cluster = users.get(address[0])
-			if old_cluster is not None:
-				users_cache[old_cluster].discard(address[0])
-			users_cache[found].add(address[0])
-			users[address[0]] = found
-
-		# OUT - Heuristic 2 - shadow addresses
-		# Exploit bitcoin client bug - "change never last output"
-		# https://bitcointalk.org/index.php?topic=128042.msg1398752#msg1398752
-		# https://bitcointalk.org/index.php?topic=136289.msg1451700#msg1451700
-		# 
-		# Fixed on Jan 30, 2013
-		# https://github.com/bitcoin/bitcoin/commit/ac7b8ea0864e925b0f5cf487be9acdf4a5d0c487#diff-d7618bdc04db23aa74d6a5a4198c58fd
-		if len(out_res) == 2:
-			address1 = out_res[0][0]
-			address2 = out_res[1][0]
-			try:
-				appeared1_res = db.query(used_so_far_query, (tx_id, address1), fetch_one=True)
-				appeared2_res = db.query(used_so_far_query, (tx_id, address2), fetch_one=True)
-				time_res = db.query(time_query, (tx_id,), fetch_one=True)
-			except Exception as e:
-				die(e)
-
-			if appeared1_res == 0 and (time_res < FIX_TIME or appeared2_res == 1):
-				# Address 1 is never used and appeared, likely a shadow address, add to previous group
-				# Exploits bitcoin client bug in case time_res < FIX_TIME or
-				# is deterministic in case appeared2_res == 1
-				# 
-				# Fixed on Jan 30, 2013 on Git repo
-				# https://github.com/bitcoin/bitcoin/commit/ac7b8ea0864e925b0f5cf487be9acdf4a5d0c487#diff-d7618bdc04db23aa74d6a5a4198c58fd
-				# 
-				# Next release: 0.8.0 on 18 Feb 2013
-				# 
-				# so only applies to transactions happened before 18 Feb 2013 (UNIX TIMESTAMP - FIX_TIME: 1329523200)
-				users_cache[found].add(address1)
-				old_cluster = users.get(address1)
-				if old_cluster is not None:
-					users_cache[old_cluster].discard(address1)
-				users[address1] = found
-			elif appeared2_res == 0 and appeared1_res == 1:
-				# This is deterministic - last address is actually a shadow address
-				users_cache[found].add(address2)
-				old_cluster = users.get(address2)
-				if old_cluster is not None:
-					users_cache[old_cluster].discard(address2)
-				users[address2] = found
+			new_cluster_id = max_cluster_id
 
 	users = save(users, FILENAME, max_txid_res)
 
