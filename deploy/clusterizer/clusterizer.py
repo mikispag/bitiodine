@@ -100,6 +100,16 @@ if options.generate:
 			max_cluster_id += 1
 			new_cluster_id = max_cluster_id
 
+		for line in in_res:
+			address = line[0]
+			if address is None or not address.startswith('1'):
+				continue
+			old_cluster = users.get(address)
+			if old_cluster is not None:
+				users_cache[old_cluster].discard(address)
+			users_cache[new_cluster_id].add(address)
+			users[address] = new_cluster_id
+
 	users = save(users, FILENAME, max_txid_res)
 
 if options.load or options.csv:
