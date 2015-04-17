@@ -1,14 +1,14 @@
 $(document).ready(function () {
-    $("#a2a_button").click(function (e) {
+    $("#path_button").click(function (e) {
         e.preventDefault();
         if ($("#from_address").val().length > 26 && $("#to_address").val().length > 26) {
             $("#from").text($("#from_address").val());
             $("#to").text($("#to_address").val());
-            $("#a2a").prop("href",  '/api/a2a/' + encodeURIComponent($("#from_address").val()) + '/' + encodeURIComponent($("#to_address").val()));
+            $("#path").prop("href",  '/api/path/' + encodeURIComponent($("#from_address").val()) + '/' + encodeURIComponent($("#to_address").val()));
         } else {
             $(this).text("Try again :)");
             setTimeout(function() {
-                $("#a2a_button").html("&rarr;&nbsp;฿&nbsp;&rarr;");
+                $("#path_button").html("&rarr;&nbsp;฿&nbsp;&rarr;");
             }, 2000);
         }
     });
