@@ -45,7 +45,7 @@ $header =
                     <ul class="pages">
                         <li><a href="/">Home</a>
                         </li>
-                        <li><a href="/a2a">Find paths</a>
+                        <li><a href="/path">Find paths</a>
                         </li>
                         <li><a href="/cluster">See clusters</a>
                         </li>
