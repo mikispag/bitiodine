@@ -4,7 +4,7 @@ $(document).ready(function () {
         if ($("#from_address").val().length > 26 && $("#to_address").val().length > 26) {
             $("#from").text($("#from_address").val());
             $("#to").text($("#to_address").val());
-            $("#path").prop("href",  '/api/path/' + encodeURIComponent($("#from_address").val()) + '/' + encodeURIComponent($("#to_address").val()));
+            $("#path").prop("href", '/api/path/' + encodeURIComponent($("#from_address").val()) + '/' + encodeURIComponent($("#to_address").val()));
         } else {
             $(this).text("Try again :)");
             setTimeout(function() {
@@ -17,7 +17,7 @@ $(document).ready(function () {
         if ($("#single_address").val().length > 26) {
             $("#operation").text("predecessors");
             $("#address").text($("#single_address").val());
-            $("#predsucc").prop("href",  '/api/predecessors/' + encodeURIComponent($("#single_address").val()));
+            $("#predsucc").prop("href", '/api/predecessors/' + encodeURIComponent($("#single_address").val()));
         } else {
             $(this).text("Try again :)");
             setTimeout(function() {
@@ -43,7 +43,7 @@ $(document).ready(function () {
         if ($("#single_address").val().length > 26) {
             $("#operation").text("cluster");
             $("#address_cluster").text($("#single_address").val());
-            $("#predsucc").prop("href",  '/api/cluster/' + encodeURIComponent($("#single_address").val()));
+            $("#predsucc").prop("href", '/api/cluster/' + encodeURIComponent($("#single_address").val()));
         } else {
             $(this).text("Try again :)");
             setTimeout(function() {
