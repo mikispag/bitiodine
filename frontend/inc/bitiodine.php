@@ -134,13 +134,65 @@ class BitIodine {
 		return tuple($nodes, $arcs);
 	}
 
-	public static function neighbors(string $address): Vector<string> {
-		$redis = RedisWrapper::getRedis();
+	public static function cluster_id(string $address): int {
 		$response = "";
 
 		$response_array = Vector {};
 		$lines = 1;
-		$request = "N_$address";
+
+		if (empty($address)) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid addresses.");
+		}
+
+		if (self::$debug === FALSE && !AddressValidator::isValid($address)) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid addresses.");
+		}
+
+		$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
+		if (!$fp) {
+			write_log(false, $request, "SERVER_KO");
+		    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
+		} else {
+			stream_set_timeout($fp, 30);
+			// Consume welcome message
+			fgets($fp);
+			usleep(500000);
+		    fwrite($fp, "PRINT_CLUSTER_ID $address\r\n");
+		    while ($response != "END" && $response != "500 Address not present in any cluster." && $lines < self::$MAX_REPLY_SIZE) {
+		    	$response = trim(fgets($fp));
+		    	$lines++;
+		    	$stream_metadata = stream_get_meta_data($fp);
+		    	$timed_out = $stream_metadata["timed_out"];
+		    	if ($timed_out === TRUE) {
+		    		fclose($fp);
+		    		write_log(false, $request, "TIMEOUT");
+		    		throw new RuntimeException("Timeout while receiving data from BitIodine servers.");
+		    	}
+		        $response_array[] = $response;
+		    }
+		    fclose($fp);
+		}
+
+		if ($response_array[0] == "500 Address not present in any cluster.") {
+			write_log((!$cached), $request, "NO_CLUSTER");
+			throw new RuntimeException("The address is not part of a cluster.");
+		}
+
+		write_log((!$cached), $request, "OK");
+		return intval($response_array[1]);
+	}
+
+	public static function neighbors(string $address): Vector<string> {
+		$redis = RedisWrapper::getRedis();
+		$response = "";
+
+		$cluster_id = cluster_id($address);
+
+		$response_array = Vector {};
+		$lines = 1;
+		$request = "C_$cluster_id";
 
 		if (empty($address)) {
 			write_log(true, $request, "INVALID_ADDRESS");
