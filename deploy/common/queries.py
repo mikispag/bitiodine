@@ -84,3 +84,18 @@ features_update_partial_query = "UPDATE addresses SET BITCOINTALK_USER = ?, BITC
 
 def update_features(n, table):
 	return "INSERT OR REPLACE INTO %s VALUES (" % table + '?,'*(n-1) + '?)'
+
+cluster_labels_schema = """
+CREATE TABLE IF NOT EXISTS cluster_labels(
+cluster_id INT NOT NULL PRIMARY KEY,
+label TEXT NOT NULL)
+"""
+
+get_cluster_label_query = "SELECT label FROM cluster_labels WHERE cluster_id = ?"
+
+add_cluster_label_query = """
+INSERT OR REPLACE INTO 
+cluster_labels 
+VALUES (?, ?)
+"""
+
