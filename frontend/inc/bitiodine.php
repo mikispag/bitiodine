@@ -137,6 +137,7 @@ class BitIodine {
 	public static function cluster_id(string $address): int {
 		$response = "";
 
+		$request = "GC_$address";
 		$response_array = Vector {};
 		$lines = 1;
 
@@ -188,7 +189,7 @@ class BitIodine {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
-		$cluster_id = cluster_id($address);
+		$cluster_id = self::cluster_id($address);
 
 		$response_array = Vector {};
 		$lines = 1;

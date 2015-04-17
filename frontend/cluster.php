@@ -19,12 +19,22 @@ if (!isset($_GET['address'])) {
 
     Security::throttle_ip_web();
 
-    try {
-        $neighbors = BitIodine::neighbors($address);
-        $cluster_size = count($neighbors);
-        $plural_form = ($cluster_size > 1) ? "es" : "";
-    } catch (Exception $e) {
-        $error_message = $e->getMessage();
+    if (is_numeric($address)) {
+        try {
+            $neighbors = BitIodine::print_cluster($address);
+            $cluster_size = $neighbors->count();
+            $plural_form = ($cluster_size > 1) ? "es" : "";
+        } catch (Exception $e) {
+            $error_message = $e->getMessage();
+        }
+    } else {
+        try {
+            $neighbors = BitIodine::neighbors($address);
+            $cluster_size = $neighbors->count();
+            $plural_form = ($cluster_size > 1) ? "es" : "";
+        } catch (Exception $e) {
+            $error_message = $e->getMessage();
+        }
     }
 
     if (!isset($error_message) && $cluster_size < 201) {
