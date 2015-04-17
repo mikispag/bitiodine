@@ -71,7 +71,7 @@ $header =
         </header>;
 
 $analytics =
-    <script type="text/javascript" src="/js/ga.js"></script>;
+    <script type="text/javascript" src="/js/ga.js" defer></script>;
 
 $body =
 <body>

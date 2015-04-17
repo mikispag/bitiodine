@@ -64,7 +64,7 @@ $content =
 
             <footer id="main-footer" class="show nav-animation-element">
                 <div class="inner-col">
-                    <p>© 2014 - a project by <a href="https://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed ~6h. {$nodes} nodes, {$arcs} arcs in the graph.
+                    <p>© - a project by <a href="https://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed ~6h. {$nodes} nodes, {$arcs} arcs in the graph.
                     </p>
                 </div>
             </footer>
