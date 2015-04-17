@@ -5,7 +5,6 @@ require("log.php");
 require("redis.php");
 
 class BitIodine {
-
 	private static $host = "127.0.0.1";
 	private static $port = 8888;
 
@@ -83,6 +82,269 @@ class BitIodine {
 
 		write_log((!$cached), $request, "OK");
 		return tuple($distance, $address_path, $tx_path);
+	}
+
+	public static function A2A(string $from, string $to): Vector<string> {
+		$redis = RedisWrapper::getRedis();
+		$response = "";
+
+		$response_array = Vector {};
+		$lines = 1;
+		$request = "A2A_$from:$to";
+
+		if (empty($from) || empty($to)) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid addresses.");
+		}
+
+		if ($from == $to) {
+			write_log(true, $request, "SAME_ADDRESS");
+			throw new RuntimeException("Source and destination addresses are the same.");
+		}
+
+		if (self::$debug === FALSE && (!AddressValidator::isValid($from) || !AddressValidator::isValid($to))) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid addresses.");
+		}
+
+		$cached = $redis->get($request);
+
+		if ($cached) {
+			$response_array = new Vector(unserialize($cached));
+		} else {
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
+			if (!$fp) {
+				write_log(false, $request, "SERVER_KO");
+			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
+			} else {
+				stream_set_timeout($fp, 30);
+				// Consume welcome message
+				fgets($fp);
+				usleep(500000);
+			    fwrite($fp, "A2A $from $to\r\n");
+			    $response = "";
+			    while ($response != "END" && $response != "500 No transactions." && $lines < self::$MAX_REPLY_SIZE) {
+			    	$response = trim(fgets($fp));
+			    	$lines++;
+			    	$stream_metadata = stream_get_meta_data($fp);
+			    	$timed_out = $stream_metadata["timed_out"];
+			    	if ($timed_out === TRUE) {
+			    		fclose($fp);
+			    		write_log(false, $request, "TIMEOUT");
+			    		throw new RuntimeException("Timeout while receiving data from BitIodine servers.");
+			    	}
+			        $response_array[] = $response;
+			    }
+			    fclose($fp);
+			    $redis->set($request, serialize($response_array), 3600 * self::$HOURS_CACHE);
+			}
+		}
+
+		if ($response_array[0] == "500 No transactions.") {
+			write_log((!$cached), $request, "NO_TXS");
+			throw new RuntimeException("There are no transactions between the two addresses.", 404);
+		}
+
+		$tx_hashes = new Vector(explode(',', $response_array[1]));
+
+		write_log((!$cached), $request, "OK");
+		return $tx_hashes;
+	}
+
+	public static function A2C(string $from, int $to_cluster): Vector<string> {
+		$redis = RedisWrapper::getRedis();
+		$response = "";
+
+		$response_array = Vector {};
+		$lines = 1;
+		$request = "A2C_$from:$to_cluster";
+
+		if (empty($from)) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid address.");
+		}
+
+		if (empty($to_cluster) || !is_numeric($to_cluster)) {
+			write_log(true, $request, "INVALID_CLUSTER");
+			throw new RuntimeException("Invalid cluster.");
+		}
+
+		if (self::$debug === FALSE && (!AddressValidator::isValid($from))) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid addresses.");
+		}
+
+		$cached = $redis->get($request);
+
+		if ($cached) {
+			$response_array = new Vector(unserialize($cached));
+		} else {
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
+			if (!$fp) {
+				write_log(false, $request, "SERVER_KO");
+			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
+			} else {
+				stream_set_timeout($fp, 30);
+				// Consume welcome message
+				fgets($fp);
+				usleep(500000);
+			    fwrite($fp, "A2C $from $to_cluster\r\n");
+			    $response = "";
+			    while ($response != "END" && $response != "500 No transactions." && $lines < self::$MAX_REPLY_SIZE) {
+			    	$response = trim(fgets($fp));
+			    	$lines++;
+			    	$stream_metadata = stream_get_meta_data($fp);
+			    	$timed_out = $stream_metadata["timed_out"];
+			    	if ($timed_out === TRUE) {
+			    		fclose($fp);
+			    		write_log(false, $request, "TIMEOUT");
+			    		throw new RuntimeException("Timeout while receiving data from BitIodine servers.");
+			    	}
+			        $response_array[] = $response;
+			    }
+			    fclose($fp);
+			    $redis->set($request, serialize($response_array), 3600 * self::$HOURS_CACHE);
+			}
+		}
+
+		if ($response_array[0] == "500 No transactions.") {
+			write_log((!$cached), $request, "NO_TXS");
+			throw new RuntimeException("There are no transactions between the address and the cluster.", 404);
+		}
+
+		$tx_hashes = new Vector(explode(',', $response_array[1]));
+
+		write_log((!$cached), $request, "OK");
+		return $tx_hashes;
+	}
+
+	public static function C2A(int $from_cluster, string $address): Vector<string> {
+		$redis = RedisWrapper::getRedis();
+		$response = "";
+
+		$response_array = Vector {};
+		$lines = 1;
+		$request = "A2C_$from:$to_cluster";
+
+		if (empty($address)) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid address.");
+		}
+
+		if (empty($from_cluster) || !is_numeric($from_cluster)) {
+			write_log(true, $request, "INVALID_CLUSTER");
+			throw new RuntimeException("Invalid cluster.");
+		}
+
+		if (self::$debug === FALSE && (!AddressValidator::isValid($address))) {
+			write_log(true, $request, "INVALID_ADDRESS");
+			throw new RuntimeException("Invalid addresses.");
+		}
+
+		$cached = $redis->get($request);
+
+		if ($cached) {
+			$response_array = new Vector(unserialize($cached));
+		} else {
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
+			if (!$fp) {
+				write_log(false, $request, "SERVER_KO");
+			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
+			} else {
+				stream_set_timeout($fp, 30);
+				// Consume welcome message
+				fgets($fp);
+				usleep(500000);
+			    fwrite($fp, "C2A $from_cluster $address\r\n");
+			    $response = "";
+			    while ($response != "END" && $response != "500 No transactions." && $lines < self::$MAX_REPLY_SIZE) {
+			    	$response = trim(fgets($fp));
+			    	$lines++;
+			    	$stream_metadata = stream_get_meta_data($fp);
+			    	$timed_out = $stream_metadata["timed_out"];
+			    	if ($timed_out === TRUE) {
+			    		fclose($fp);
+			    		write_log(false, $request, "TIMEOUT");
+			    		throw new RuntimeException("Timeout while receiving data from BitIodine servers.");
+			    	}
+			        $response_array[] = $response;
+			    }
+			    fclose($fp);
+			    $redis->set($request, serialize($response_array), 3600 * self::$HOURS_CACHE);
+			}
+		}
+
+		if ($response_array[0] == "500 No transactions.") {
+			write_log((!$cached), $request, "NO_TXS");
+			throw new RuntimeException("There are no transactions between the cluster and the address.", 404);
+		}
+
+		$tx_hashes = new Vector(explode(',', $response_array[1]));
+
+		write_log((!$cached), $request, "OK");
+		return $tx_hashes;
+	}
+
+	public static function C2C(int $from_cluster, int $to_cluster): Vector<string> {
+		$redis = RedisWrapper::getRedis();
+		$response = "";
+
+		$response_array = Vector {};
+		$lines = 1;
+		$request = "C2C_$from_cluster:$to_cluster";
+
+		if (empty($from_cluster) || !is_numeric($from_cluster)) {
+			write_log(true, $request, "INVALID_CLUSTER");
+			throw new RuntimeException("Invalid cluster.");
+		}
+
+		if (empty($to_cluster) || !is_numeric($to_cluster)) {
+			write_log(true, $request, "INVALID_CLUSTER");
+			throw new RuntimeException("Invalid cluster.");
+		}
+
+		$cached = $redis->get($request);
+
+		if ($cached) {
+			$response_array = new Vector(unserialize($cached));
+		} else {
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
+			if (!$fp) {
+				write_log(false, $request, "SERVER_KO");
+			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
+			} else {
+				stream_set_timeout($fp, 30);
+				// Consume welcome message
+				fgets($fp);
+				usleep(500000);
+			    fwrite($fp, "C2C $from_cluster $to_cluster\r\n");
+			    $response = "";
+			    while ($response != "END" && $response != "500 No transactions." && $lines < self::$MAX_REPLY_SIZE) {
+			    	$response = trim(fgets($fp));
+			    	$lines++;
+			    	$stream_metadata = stream_get_meta_data($fp);
+			    	$timed_out = $stream_metadata["timed_out"];
+			    	if ($timed_out === TRUE) {
+			    		fclose($fp);
+			    		write_log(false, $request, "TIMEOUT");
+			    		throw new RuntimeException("Timeout while receiving data from BitIodine servers.");
+			    	}
+			        $response_array[] = $response;
+			    }
+			    fclose($fp);
+			    $redis->set($request, serialize($response_array), 3600 * self::$HOURS_CACHE);
+			}
+		}
+
+		if ($response_array[0] == "500 No transactions.") {
+			write_log((!$cached), $request, "NO_TXS");
+			throw new RuntimeException("There are no transactions between the two clusters.", 404);
+		}
+
+		$tx_hashes = new Vector(explode(',', $response_array[1]));
+
+		write_log((!$cached), $request, "OK");
+		return $tx_hashes;
 	}
 
 	public static function stats(): (int, int) {
