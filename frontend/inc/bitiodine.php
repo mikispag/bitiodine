@@ -492,8 +492,11 @@ class BitIodine {
 			throw new RuntimeException("The cluster ID does not exist.");
 		}
 
-		$response_array->pop();
-		$response_array->removeKey(0);
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+		
 		write_log((!$cached), $request, "OK");
 		return new Vector($response_array);
 	}
@@ -555,8 +558,11 @@ class BitIodine {
 			throw new RuntimeException("The address is not part of a cluster.");
 		}
 
-		$response_array->pop();
-		$response_array->removeKey(0);
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+		
 		write_log((!$cached), $request, "OK");
 		return new Vector($response_array);
 	}
@@ -616,8 +622,11 @@ class BitIodine {
 			throw new RuntimeException("The address has no predecessors.");
 		}
 
-		$response_array->pop();
-		$response_array->removeKey(0);
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+		
 		write_log((!$cached), $request, "OK");
 		return new Set(explode(',', $response_array[0]));
 	}
@@ -677,8 +686,11 @@ class BitIodine {
 			throw new RuntimeException("The address has no successors.");
 		}
 
-		$response_array->pop();
-		$response_array->removeKey(0);
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+		
 		write_log((!$cached), $request, "OK");
 		return new Set(explode(',', $response_array[0]));
 	}

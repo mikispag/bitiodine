@@ -21,8 +21,8 @@ if (!isset($_GET['address'])) {
 
     try {
         $predecessors = BitIodine::predecessors($address);
-        $cluster_size = count($predecessors);
-        $plural_form = ($cluster_size > 1) ? "es" : "";
+        $result_size = count($predecessors);
+        $plural_form = ($result_size > 1) ? "es" : "";
         $balances = BlockChain::get_balances($predecessors);
     } catch (Exception $e) {
         $error_message = $e->getMessage();
