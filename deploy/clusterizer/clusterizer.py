@@ -69,7 +69,7 @@ if options.generate:
 
 	for tx_id in range(min_txid, max_txid_res + 1):
 		# Save progress to files
-		if tx_id % 100000 == 0 and not loaded:
+		if tx_id % 2000000 == 0 and not loaded:
 			print("TRANSACTION ID: %d" % (tx_id))
 			save(users, FILENAME, tx_id)
 
@@ -85,7 +85,7 @@ if options.generate:
 		new_cluster_id = None
 		for line in in_res:
 			address = line[0]
-			if address is None or not address.startswith('1'):
+			if address is None:
 				continue
 			current_cluster_id = users.get(address)
 			if new_cluster_id is not None and current_cluster_id != new_cluster_id:
@@ -102,7 +102,7 @@ if options.generate:
 
 		for line in in_res:
 			address = line[0]
-			if address is None or not address.startswith('1'):
+			if address is None:
 				continue
 			old_cluster = users.get(address)
 			if old_cluster is not None:
@@ -174,3 +174,4 @@ if options.print_address is not None:
 		die(e)
 
 	print(users[options.print_address])
+

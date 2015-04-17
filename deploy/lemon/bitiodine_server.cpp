@@ -11,6 +11,7 @@
 #include <lemon/smart_graph.h>
 #include <list>
 #include <netdb.h>
+#include <sqlite3.h>
 #include <sstream>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -38,6 +39,8 @@ unordered_set<string> find_predecessors(string from);
 unordered_set<string> find_successors(string from);
 void mainloop(int server_fd);
 void print_cluster(int client, int cluster);
+void print_cluster_id(int client, string address);
+void print_cluster_label(int client, int cluster);
 int server_establish_connection(int server_fd);
 void server_send(int fd, string data);
 int server_start_listen();
@@ -108,6 +111,50 @@ int main()
 
     mainloop(server_fd);
     return 0;
+}
+
+void print_cluster_id(int client, string address)
+{
+    unordered_map<string, int>::const_iterator got = clusters.find(address);
+
+    if (got == clusters.end()) {
+        server_send(client, "500 Address not present in any cluster.\n");
+        return;
+    } else {
+        int cluster = got->second;
+        server_send(client, "BEGIN\n");
+        server_send(client, cluster + "\n");
+        server_send(client, "END\n");
+    }
+}
+
+void print_cluster_label(int client, int cluster)
+{
+    sqlite3 *db;
+    sqlite3_stmt *stmt;
+
+    if (sqlite3_open("../clusterizer/cluster_labels.sqlite", &db) == SQLITE_OK) {
+        sqlite3_prepare_v2(db, "SELECT label FROM cluster_labels WHERE cluster_id = ?", -1, &stmt, NULL );
+        if (sqlite3_bind_int(stmt, 1, cluster) != SQLITE_OK) {
+            server_send(client, "500 No label.\n");
+            return;
+        }
+        if (sqlite3_step(stmt) != SQLITE_OK) {
+            server_send(client, "500 No label.\n");
+            return;
+        }
+        string label = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+        server_send(client, "BEGIN\n");
+        server_send(client, label + "\n");
+        server_send(client, "END\n");
+    }
+    else {
+        cerr << "Failed to open DB!\n";
+        server_send(client, "500 No label.\n");
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
 }
 
 void print_cluster(int client, int cluster)
@@ -528,6 +575,34 @@ void do_command(char *command_c, int client)
         }
 
         return;
+    } else if (tokens[0] == "PRINT_CLUSTER_ID") {
+        if (tokens.size() < 2) {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        try {
+            print_cluster_id(client, tokens[1]);
+        } catch (std::invalid_argument e) {
+            server_send(client, "500 Arguments error.\n");
+        }
+
+        return;
+    } else if (tokens[0] == "PRINT_CLUSTER_LABEL") {
+        int cluster;
+
+        if (tokens.size() < 2) {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        try {
+            print_cluster_label(client, stoi(tokens[1]));
+        } catch (std::invalid_argument e) {
+            server_send(client, "500 Arguments error.\n");
+        }
+
+        return;
     } else if (tokens[0] == "PRINT_NEIGHBORS") {
         int cluster;
 
@@ -562,3 +637,4 @@ void do_command(char *command_c, int client)
         server_send(client, "404 COMMAND NOT FOUND\n");
     }
 }
+
