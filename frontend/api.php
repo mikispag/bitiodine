@@ -41,13 +41,13 @@ $content =
 
                         <form>
                             <input type="text" class="center" id="from_address" placeholder="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" value="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" />
-                            <button class="button" id="a2a_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
+                            <button class="button" id="path_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
                             <input type="text" class="center" id="to_address" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" value="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" />
                             <br class="clear" />
                         </form>
 
                         <p class="api">
-                            <a id="a2a" target="_blank" href="/api/a2a/1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">/api/a2a/<span id="from">1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE</span>/<span id="to">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</span></a>
+                            <a id="path" target="_blank" href="/api/path/1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">/api/path/<span id="from">1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE</span>/<span id="to">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</span></a>
                         </p>
 
                         <p class="gold">
@@ -63,7 +63,7 @@ $content =
                         </p>
 
                         <p>
-                                <span class="white">/api/a2a/1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?show_balances=1</span>
+                                <span class="white">/api/path/1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?show_balances=1</span>
                                 <br />
                                 — returns a shortest path from <span class="gold">1AA...</span> to <span class="gold">1A1...</span>.
                         </p>

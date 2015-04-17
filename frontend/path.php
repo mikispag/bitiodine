@@ -41,7 +41,7 @@ if ($show_form) {
     $section_show->appendChild(
         <form>
             <input type="text" class="center" id="from_address" placeholder="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" value="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" />
-            <button class="button" id="a2a_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
+            <button class="button" id="path_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
             <input type="text" class="center" id="to_address" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" value="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" />
             <br class="clear" />
         </form>);

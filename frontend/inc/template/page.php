@@ -54,7 +54,7 @@ $header =
                         {$price_widget}
                     </ul>
                     <ul class="external">
-                        <li><a href="http://miki.it/articles/papers/#bitiodine"><span>About</span></a>
+                        <li><a href="https://miki.it/articles/papers/#bitiodine"><span>About</span></a>
                         </li>
                         <li><a href="/api"><span>API</span></a>
                         </li>
