@@ -23,7 +23,7 @@ if (!isset($_GET['from']) || !isset($_GET['to'])) {
     Security::throttle_ip_web();
 
     try {
-        list($distance, $address_path, $tx_path) = BitIodine::A2A($from, $to);
+        list($distance, $address_path, $tx_path) = BitIodine::shortest_path_A2A($from, $to);
         $plural_form = ($distance > 1) ? "s" : "";
         $tx_values = BlockChain::get_tx_values($tx_path, $address_path);
         $balances = BlockChain::get_balances($address_path);

@@ -14,12 +14,23 @@ if (!isset($_GET['address'])) {
     $address = trim($_GET['address']);
     $error_code = 500;
 
-    try {
-        $neighbors = BitIodine::neighbors($address);
-    } catch (Exception $e) {
-        $error_message = $e->getMessage();
-        if ($e->getCode() == 404) {
-            $error_code = 404;
+    if (is_numeric($address)) {
+        try {
+            $neighbors = BitIodine::print_cluster(intval($address));
+        } catch (Exception $e) {
+            $error_message = $e->getMessage();
+            if ($e->getCode() == 404) {
+                $error_code = 404;
+            }
+        }
+    } else {
+        try {
+            $neighbors = BitIodine::neighbors($address);
+        } catch (Exception $e) {
+            $error_message = $e->getMessage();
+            if ($e->getCode() == 404) {
+                $error_code = 404;
+            }
         }
     }
 

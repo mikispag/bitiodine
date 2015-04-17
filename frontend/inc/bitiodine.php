@@ -16,13 +16,13 @@ class BitIodine {
 	private static $errstr = "";
 	private static $errno = 0;
 
-	public static function A2A(string $from, string $to): (int, Vector<string>, Vector<string>) {
+	public static function shortest_path_A2A(string $from, string $to): (int, Vector<string>, Vector<string>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
 		$response_array = Vector {};
 		$lines = 1;
-		$request = "A2A_$from:$to";
+		$request = "SHORTEST_PATH_A2A_$from:$to";
 
 		if (empty($from) || empty($to)) {
 			write_log(true, $request, "INVALID_ADDRESS");
@@ -183,6 +183,57 @@ class BitIodine {
 
 		write_log((!$cached), $request, "OK");
 		return intval($response_array[1]);
+	}
+
+	public static function print_cluster(int $cluster): Vector<string> {
+		$redis = RedisWrapper::getRedis();
+		$response = "";
+
+		$response_array = Vector {};
+		$lines = 1;
+		$request = "C_$cluster";
+
+		$cached = $redis->get($request);
+
+		if ($cached) {
+			$response_array = new Vector(unserialize($cached));
+		} else {
+			$fp = stream_socket_client("tcp://" . self::$host . ":" . self::$port, self::$errno, self::$errstr, 5);
+			if (!$fp) {
+				write_log(false, $request, "SERVER_KO");
+			    throw new RuntimeException("BitIodine servers are updating the blockchain and will be back soon.");
+			} else {
+				stream_set_timeout($fp, 30);
+				// Consume welcome message
+				fgets($fp);
+				usleep(500000);
+			    fwrite($fp, "PRINT_CLUSTER $cluster\r\n");
+			    while ($response != "END" && $lines < self::$MAX_REPLY_SIZE) {
+			    	$response = trim(fgets($fp));
+			    	$lines++;
+			    	$stream_metadata = stream_get_meta_data($fp);
+			    	$timed_out = $stream_metadata["timed_out"];
+			    	if ($timed_out === TRUE) {
+			    		fclose($fp);
+			    		write_log(false, $request, "TIMEOUT");
+			    		throw new RuntimeException("Timeout while receiving data from BitIodine servers.");
+			    	}
+			        $response_array[] = $response;
+			    }
+			    fclose($fp);
+			    $redis->set($request, serialize($response_array), 3600 * self::$HOURS_CACHE);
+			}
+		}
+
+		if ($response_array->count() == 2) {
+			write_log((!$cached), $request, "NO_CLUSTER");
+			throw new RuntimeException("The cluster ID does not exist.");
+		}
+
+		$response_array->pop();
+		$response_array->removeKey(0);
+		write_log((!$cached), $request, "OK");
+		return new Vector($response_array);
 	}
 
 	public static function neighbors(string $address): Vector<string> {

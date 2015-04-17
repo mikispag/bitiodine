@@ -16,7 +16,7 @@ if (!isset($_GET['from']) || !isset($_GET['to'])) {
     $error_code = 500;
 
     try {
-        list($distance, $address_path, $tx_path) = BitIodine::A2A($from, $to);
+        list($distance, $address_path, $tx_path) = BitIodine::shortest_path_A2A($from, $to);
     } catch (Exception $e) {
         $error_message = $e->getMessage();
         if ($e->getCode() == 404) {
