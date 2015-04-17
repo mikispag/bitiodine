@@ -40,7 +40,7 @@ $content =
 
                     <form>
                         <input type="text" class="center" id="from_address" placeholder="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" value="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" />
-                        <button class="button" id="a2a_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
+                        <button class="button" id="path_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
                         <input type="text" class="center" id="to_address" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" value="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" />
                         <br class="clear" />
                     </form>
@@ -64,7 +64,7 @@ $content =
 
             <footer id="main-footer" class="show nav-animation-element">
                 <div class="inner-col">
-                    <p>© 2014 - a project by <a href="http://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed ~6h. {$nodes} nodes, {$arcs} arcs in the graph.
+                    <p>© 2014 - a project by <a href="https://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed ~6h. {$nodes} nodes, {$arcs} arcs in the graph.
                     </p>
                 </div>
             </footer>
