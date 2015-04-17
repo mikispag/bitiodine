@@ -372,6 +372,108 @@ unordered_set<string> find_predecessors(string from)
     return predecessors;
 }
 
+unordered_set<string> a2a(string from, string to)
+{
+    SmartDigraph::Node s = INVALID;
+    unordered_set<string> tx_hashes;
+
+    for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
+        if (address[n] == from)
+            s = n;
+    }
+
+    for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
+        if (address[g.target(a)] != to) {
+            tx_hashes.insert(address[g.target(a)]);
+        }
+    }
+
+    return tx_hashes;
+}
+
+unordered_set<string> a2c(string from, int cluster)
+{
+    SmartDigraph::Node s = INVALID;
+    unordered_set<string> tx_hashes;
+    unordered_set<string> target_addresses;
+
+    for (auto &it : clusters) {
+        if (it.second == cluster) {
+            target_addresses.insert(it.first);
+        }
+    }
+
+    for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
+        if (address[n] == from)
+            s = n;
+    }
+
+    for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
+        if (target_addresses.find(address[g.target(a)]) != target_addresses.end()) {
+            tx_hashes.insert(address[g.target(a)]);
+        }
+    }
+
+    return tx_hashes;
+}
+
+unordered_set<string> c2a(int cluster, string to)
+{
+    SmartDigraph::Node s = INVALID;
+    unordered_set<string> tx_hashes;
+    unordered_set<string> source_addresses;
+
+    for (auto &it : clusters) {
+        if (it.second == cluster) {
+            source_addresses.insert(it.first);
+        }
+    }
+
+    for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
+        if (address[n] == to)
+            s = n;
+    }
+
+    for (SmartDigraph::InArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
+        if (source_addresses.find(address[g.source(a)]) != source_addresses.end()) {
+            tx_hashes.insert(address[g.source(a)]);
+        }
+    }
+
+    return tx_hashes;
+}
+
+unordered_set<string> c2c(int cluster_from, int cluster_to)
+{
+    SmartDigraph::Node s = INVALID;
+    unordered_set<string> tx_hashes;
+    unordered_set<string> source_addresses;
+    unordered_set<string> target_addresses;
+
+    for (auto &it : clusters) {
+        if (it.second == cluster_from) {
+            source_addresses.insert(it.first);
+        } else if (it.second == cluster_to) {
+            target_addresses.insert(it.first);
+        }
+    }
+
+    for (auto &it : source_addresses) {
+        for (SmartDigraph::NodeIt n(g); (s == INVALID) && n != INVALID; ++n) {
+            if (address[n] == it)
+                s = n;
+        }
+
+        for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
+            if (target_addresses.find(address[g.target(a)]) != target_addresses.end()) {
+                tx_hashes.insert(address[g.target(a)]);
+            }
+        }
+    }
+
+    return tx_hashes;
+}
+
 
 int server_start_listen()
 {
@@ -559,6 +661,87 @@ void do_command(char *command_c, int client)
             server_send(client, "END\n");
         } else
             server_send(client, "500 No predecessors.\n");
+        return;
+    } else if (tokens[0] == "A2A") {
+        if (tokens.size() < 3 || !bitcoin_address_quick_valid(tokens[1]) || !bitcoin_address_quick_valid(tokens[2])) {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        server_send(client, "BEGIN\n");
+
+        unordered_set<string> tx_hashes = a2a(tokens[1], tokens[2]);
+
+        if (!tx_hashes.empty()) {
+            for (auto &it : tx_hashes) {
+                output += it + ",";
+            }
+
+            /* Remove last character (,) */
+            try {
+                output.pop_back();
+            } catch (...) {
+                // Do nothing for now.
+            }
+
+            server_send(client, output + "\n");
+            server_send(client, "END\n");
+        } else
+            server_send(client, "500 No transactions.\n");
+        return;
+    } else if (tokens[0] == "A2C") {
+        if (tokens.size() < 3 || !bitcoin_address_quick_valid(tokens[1])) {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        server_send(client, "BEGIN\n");
+
+        unordered_set<string> tx_hashes = a2c(tokens[1], stoi(tokens[2]));
+
+        if (!tx_hashes.empty()) {
+            for (auto &it : tx_hashes) {
+                output += it + ",";
+            }
+
+            /* Remove last character (,) */
+            try {
+                output.pop_back();
+            } catch (...) {
+                // Do nothing for now.
+            }
+
+            server_send(client, output + "\n");
+            server_send(client, "END\n");
+        } else
+            server_send(client, "500 No transactions.\n");
+        return;
+    } else if (tokens[0] == "C2C") {
+        if (tokens.size() < 3) {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        server_send(client, "BEGIN\n");
+
+        unordered_set<string> tx_hashes = c2c(stoi(tokens[1]), stoi(tokens[2]));
+
+        if (!tx_hashes.empty()) {
+            for (auto &it : tx_hashes) {
+                output += it + ",";
+            }
+
+            /* Remove last character (,) */
+            try {
+                output.pop_back();
+            } catch (...) {
+                // Do nothing for now.
+            }
+
+            server_send(client, output + "\n");
+            server_send(client, "END\n");
+        } else
+            server_send(client, "500 No transactions.\n");
         return;
     } else if (tokens[0] == "PRINT_CLUSTER") {
         int cluster;
