@@ -71,8 +71,8 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 No path.") {
-			write_log((!$cached), $request, "NO_PATH");
+		if ($response_array->isEmpty() || $response_array[0] == "500 No path.") {
+			write_log(($cached !== false), $request, "NO_PATH");
 			throw new RuntimeException("There is no connection between the two addresses.", 404);
 		}
 
@@ -80,7 +80,7 @@ class BitIodine {
 		$address_path = new Vector(explode('>', $response_array[2]));
 		$tx_path = new Vector(explode('>', $response_array[3]));
 
-		write_log((!$cached), $request, "OK");
+		write_log(($cached !== false), $request, "OK");
 		return tuple($distance, $address_path, $tx_path);
 	}
 
@@ -140,14 +140,14 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 No transactions.") {
-			write_log((!$cached), $request, "NO_TXS");
+		if ($response_array->isEmpty() || $response_array[0] == "500 No transactions.") {
+			write_log(($cached !== false), $request, "NO_TXS");
 			throw new RuntimeException("There are no transactions between the two addresses.", 404);
 		}
 
 		$tx_hashes = new Vector(explode(',', $response_array[1]));
 
-		write_log((!$cached), $request, "OK");
+		write_log(($cached !== false), $request, "OK");
 		return $tx_hashes;
 	}
 
@@ -207,14 +207,14 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 No transactions.") {
-			write_log((!$cached), $request, "NO_TXS");
+		if ($response_array->isEmpty() || $response_array[0] == "500 No transactions.") {
+			write_log(($cached !== false), $request, "NO_TXS");
 			throw new RuntimeException("There are no transactions between the address and the cluster.", 404);
 		}
 
 		$tx_hashes = new Vector(explode(',', $response_array[1]));
 
-		write_log((!$cached), $request, "OK");
+		write_log(($cached !== false), $request, "OK");
 		return $tx_hashes;
 	}
 
@@ -274,14 +274,14 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 No transactions.") {
-			write_log((!$cached), $request, "NO_TXS");
+		if ($response_array->isEmpty() || $response_array[0] == "500 No transactions.") {
+			write_log(($cached !== false), $request, "NO_TXS");
 			throw new RuntimeException("There are no transactions between the cluster and the address.", 404);
 		}
 
 		$tx_hashes = new Vector(explode(',', $response_array[1]));
 
-		write_log((!$cached), $request, "OK");
+		write_log(($cached !== false), $request, "OK");
 		return $tx_hashes;
 	}
 
@@ -336,14 +336,14 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 No transactions.") {
-			write_log((!$cached), $request, "NO_TXS");
+		if ($response_array->isEmpty() || $response_array[0] == "500 No transactions.") {
+			write_log(($cached !== false), $request, "NO_TXS");
 			throw new RuntimeException("There are no transactions between the two clusters.", 404);
 		}
 
 		$tx_hashes = new Vector(explode(',', $response_array[1]));
 
-		write_log((!$cached), $request, "OK");
+		write_log(($cached !== false), $request, "OK");
 		return $tx_hashes;
 	}
 
@@ -383,7 +383,7 @@ class BitIodine {
 			        $response_array[] = $response;
 			    }
 			    fclose($fp);
-			    if (intval($response_array[1]) > 0) {
+			    if ($response_array->count() > 1 && intval($response_array[1]) > 0) {
 			    	$redis->set($request, serialize($response_array), 3600 * self::$HOURS_CACHE);
 				}
 			}
@@ -392,7 +392,7 @@ class BitIodine {
 		$nodes = intval($response_array[1]);
 		$arcs = intval($response_array[2]);
 
-		write_log((!$cached), $request, "OK");
+		write_log(($cached !== false), $request, "OK");
 		return tuple($nodes, $arcs);
 	}
 
@@ -438,12 +438,12 @@ class BitIodine {
 		    fclose($fp);
 		}
 
-		if ($response_array[0] == "500 Address not present in any cluster.") {
-			write_log((!$cached), $request, "NO_CLUSTER");
+		if ($response_array->isEmpty() || $response_array[0] == "500 Address not present in any cluster.") {
+			write_log(($cached !== false), $request, "NO_CLUSTER");
 			throw new RuntimeException("The address is not part of a cluster.");
 		}
 
-		write_log((!$cached), $request, "OK");
+		write_log(($cached !== false), $request, "OK");
 		return intval($response_array[1]);
 	}
 
@@ -487,8 +487,8 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array->count() == 2) {
-			write_log((!$cached), $request, "NO_CLUSTER");
+		if ($response_array->count() < 3) {
+			write_log(($cached !== false), $request, "NO_CLUSTER");
 			throw new RuntimeException("The cluster ID does not exist.");
 		}
 
@@ -496,8 +496,8 @@ class BitIodine {
 			$response_array->pop();
 			$response_array->removeKey(0);
 		} catch (Exception $e) {}
-		
-		write_log((!$cached), $request, "OK");
+
+		write_log(($cached !== false), $request, "OK");
 		return new Vector($response_array);
 	}
 
@@ -553,8 +553,8 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 Address not present in any cluster.") {
-			write_log((!$cached), $request, "NO_CLUSTER");
+		if ($response_array->isEmpty() ||$response_array[0] == "500 Address not present in any cluster.") {
+			write_log(($cached !== false), $request, "NO_CLUSTER");
 			throw new RuntimeException("The address is not part of a cluster.");
 		}
 
@@ -562,8 +562,8 @@ class BitIodine {
 			$response_array->pop();
 			$response_array->removeKey(0);
 		} catch (Exception $e) {}
-		
-		write_log((!$cached), $request, "OK");
+
+		write_log(($cached !== false), $request, "OK");
 		return new Vector($response_array);
 	}
 
@@ -617,8 +617,8 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 No predecessors.") {
-			write_log((!$cached), $request, "NO_PREDECESSORS");
+		if ($response_array->isEmpty() ||$response_array[1] == "500 No predecessors.") {
+			write_log(($cached !== false), $request, "NO_PREDECESSORS");
 			throw new RuntimeException("The address has no predecessors.");
 		}
 
@@ -626,8 +626,8 @@ class BitIodine {
 			$response_array->pop();
 			$response_array->removeKey(0);
 		} catch (Exception $e) {}
-		
-		write_log((!$cached), $request, "OK");
+
+		write_log(($cached !== false), $request, "OK");
 		return new Set(explode(',', $response_array[0]));
 	}
 
@@ -681,8 +681,8 @@ class BitIodine {
 			}
 		}
 
-		if ($response_array[0] == "500 No successors.") {
-			write_log((!$cached), $request, "NO_SUCCESSORS");
+		if ($response_array->isEmpty() || $response_array[1] == "500 No successors.") {
+			write_log(($cached !== false), $request, "NO_SUCCESSORS");
 			throw new RuntimeException("The address has no successors.");
 		}
 
@@ -690,8 +690,8 @@ class BitIodine {
 			$response_array->pop();
 			$response_array->removeKey(0);
 		} catch (Exception $e) {}
-		
-		write_log((!$cached), $request, "OK");
+
+		write_log(($cached !== false), $request, "OK");
 		return new Set(explode(',', $response_array[0]));
 	}
 }
