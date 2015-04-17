@@ -105,6 +105,6 @@ for tx_id in range(min_tx_id, max_tx_id+1):
 
   for in_address in in_addr:
     for out_address in out_addr:
-      G.add_edge(in_address, out_address, tx_hash=tx_hash)
+      G.add_edge(in_address, out_address, tx_id=tx_id, tx_hash=tx_hash)
 
 save(G, args.output_filename, tx_id)
