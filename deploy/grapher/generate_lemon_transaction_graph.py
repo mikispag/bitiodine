@@ -74,7 +74,7 @@ with open(FILENAME, 'w') as f:
   for tx_id in range(min_txid_res + 1, max_txid_res + 1):
     try:
       in_res = db.query(in_query_addr, (tx_id,))
-      out_res = db.query(out_query_addr, (tx_id,))
+      out_res = db.query(out_query_addr_with_value, (tx_id,))
       tx_hash = db.query(tx_hash_query, (tx_id,), fetch_one=True)
       time = db.query(time_query, (tx_id,), fetch_one=True)
     except Exception as e:
@@ -97,14 +97,14 @@ with open(FILENAME, 'w') as f:
     for out in out_res:
       if out[0] not in in_addr:
         out_addr.add(out[0])
-        values[out[0]] = value
+        values[out[0]] = out[1]
 
     for in_address in in_addr:
       for out_address in out_addr:
-        f.write(padWithSpaces(in_address) + " " + padWithSpaces(out_address) + " " + tx_hash + " " + time + " " + values[out_address] + "\n")
+        f.write(padWithSpaces(in_address) + " " + padWithSpaces(out_address) + " " + tx_hash + " " + str(time) + " " + str(values[out_address]) + "\n")
 
   f.write("\n")
   f.write("@attributes\n")
   f.write("source 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa\n") # Genesis address
 
-os.rename("tx_graph.lgf.new", "tx_graph.lgf");
+os.rename("tx_graph.lgf.new", "tx_graph.lgf")
