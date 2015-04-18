@@ -21,7 +21,7 @@ if (!isset($_GET['address'])) {
 
     if (is_numeric($address)) {
         try {
-            $neighbors = BitIodine::print_cluster($address);
+            $neighbors = BitIodine::print_cluster(intval($address));
             $cluster_size = $neighbors->count();
             $plural_form = ($cluster_size > 1) ? "es" : "";
         } catch (Exception $e) {
