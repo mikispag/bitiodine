@@ -155,10 +155,12 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+			$timestamp = intval($parsed_line[1]);
+			$value = floatval(intval($parsed_line[2])/10e8);
+			if ($timestamp >= $min_time && $timestamp <= $max_time && $value >= $min_value && $value <= $max_value) {
 				$tx_hashes[] = $parsed_line[0];
-				$timestamps[] = intval($parsed_line[1]);
-				$values[] = floatval(intval($parsed_line[2])/10e8);
+				$timestamps[] = $timestamp;
+				$values[] = $value;
 			}
 		}
 
@@ -237,10 +239,12 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+			$timestamp = intval($parsed_line[1]);
+			$value = floatval(intval($parsed_line[2])/10e8);
+			if ($timestamp >= $min_time && $timestamp <= $max_time && $value >= $min_value && $value <= $max_value) {
 				$tx_hashes[] = $parsed_line[0];
-				$timestamps[] = intval($parsed_line[1]);
-				$values[] = floatval(intval($parsed_line[2])/10e8);
+				$timestamps[] = $timestamp;
+				$values[] = $value;
 			}
 		}
 
@@ -319,10 +323,12 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+			$timestamp = intval($parsed_line[1]);
+			$value = floatval(intval($parsed_line[2])/10e8);
+			if ($timestamp >= $min_time && $timestamp <= $max_time && $value >= $min_value && $value <= $max_value) {
 				$tx_hashes[] = $parsed_line[0];
-				$timestamps[] = intval($parsed_line[1]);
-				$values[] = floatval(intval($parsed_line[2])/10e8);
+				$timestamps[] = $timestamp;
+				$values[] = $value;
 			}
 		}
 
@@ -396,10 +402,12 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+			$timestamp = intval($parsed_line[1]);
+			$value = floatval(intval($parsed_line[2])/10e8);
+			if ($timestamp >= $min_time && $timestamp <= $max_time && $value >= $min_value && $value <= $max_value) {
 				$tx_hashes[] = $parsed_line[0];
-				$timestamps[] = intval($parsed_line[1]);
-				$values[] = floatval(intval($parsed_line[2])/10e8);
+				$timestamps[] = $timestamp;
+				$values[] = $value;
 			}
 		}
 
