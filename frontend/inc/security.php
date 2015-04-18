@@ -27,6 +27,10 @@ class Security {
 	}
 
 	public static function throttle_ip_web(): void {
+		if (isset($_GET['key']) && self::$API_WHITELIST_KEYS->contains($_GET['key'])) {
+			return;
+		}
+		
 		$ip = $_SERVER["REMOTE_ADDR"];
 		$redis = RedisWrapper::getRedis();
 
