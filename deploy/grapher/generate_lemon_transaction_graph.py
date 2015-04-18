@@ -27,7 +27,6 @@ except Exception as e:
   die(e)
 
 with open(FILENAME, 'w') as f:
-
   f.write("@nodes\n")
   f.write("label\n")
 
