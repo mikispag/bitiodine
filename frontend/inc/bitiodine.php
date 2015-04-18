@@ -84,7 +84,7 @@ class BitIodine {
 		return tuple($distance, $address_path, $tx_path);
 	}
 
-	public static function A2A(string $from, string $to): (Vector<string>, Vector<int>, Vector<float>) {
+	public static function A2A(string $from, string $to, int $min_time = 0, int $max_time = 2147483647, float $min_value = floatval(0), float $max_value = INF): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -161,10 +161,10 @@ class BitIodine {
 		}
 
 		write_log(($cached !== false), $request, "OK");
-		return ($tx_hashes, $timestamps, $values);
+		return tuple($tx_hashes, $timestamps, $values);
 	}
 
-	public static function A2C(string $from, int $to_cluster): (Vector<string>, Vector<int>, Vector<float>) {
+	public static function A2C(string $from, int $to_cluster, int $min_time = 0, int $max_time = 2147483647, float $min_value = floatval(0), float $max_value = INF): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -241,10 +241,10 @@ class BitIodine {
 		}
 
 		write_log(($cached !== false), $request, "OK");
-		return ($tx_hashes, $timestamps, $values);
+		return tuple($tx_hashes, $timestamps, $values);
 	}
 
-	public static function C2A(int $from_cluster, string $address): (Vector<string>, Vector<int>, Vector<float>) {
+	public static function C2A(int $from_cluster, string $address, int $min_time = 0, int $max_time = 2147483647, float $min_value = floatval(0), float $max_value = INF): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -321,10 +321,10 @@ class BitIodine {
 		}
 
 		write_log(($cached !== false), $request, "OK");
-		return ($tx_hashes, $timestamps, $values);
+		return tuple($tx_hashes, $timestamps, $values);
 	}
 
-	public static function C2C(int $from_cluster, int $to_cluster): (Vector<string>, Vector<int>, Vector<float>) {
+	public static function C2C(int $from_cluster, int $to_cluster, int $min_time = 0, int $max_time = 2147483647, float $min_value = floatval(0), float $max_value = INF): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -396,7 +396,7 @@ class BitIodine {
 		}
 
 		write_log(($cached !== false), $request, "OK");
-		return ($tx_hashes, $timestamps, $values);
+		return tuple($tx_hashes, $timestamps, $values);
 	}
 
 	public static function stats(): (int, int) {
