@@ -686,17 +686,9 @@ void do_command(char *command_c, int client)
 
         if (!tx_hashes.empty()) {
             for (auto &it : tx_hashes) {
-                output += it + ",";
+                server_send(client, it + "\n");
             }
 
-            /* Remove last character (,) */
-            try {
-                output.pop_back();
-            } catch (...) {
-                // Do nothing for now.
-            }
-
-            server_send(client, output + "\n");
             server_send(client, "END\n");
         } else
             server_send(client, "500 No transactions.\n");
@@ -713,14 +705,27 @@ void do_command(char *command_c, int client)
 
         if (!tx_hashes.empty()) {
             for (auto &it : tx_hashes) {
-                output += it + ",";
+                server_send(client, it + "\n");
             }
 
-            /* Remove last character (,) */
-            try {
-                output.pop_back();
-            } catch (...) {
-                // Do nothing for now.
+            server_send(client, output + "\n");
+            server_send(client, "END\n");
+        } else
+            server_send(client, "500 No transactions.\n");
+        return;
+    } else if (tokens[0] == "C2A") {
+        if (tokens.size() < 3 || !bitcoin_address_quick_valid(tokens[2])) {
+            server_send(client, "500 Arguments error.\n");
+            return;
+        }
+
+        server_send(client, "BEGIN\n");
+
+        unordered_set<string> tx_hashes = c2a(stoi(tokens[1]), tokens[2]);
+
+        if (!tx_hashes.empty()) {
+            for (auto &it : tx_hashes) {
+                server_send(client, it + "\n");
             }
 
             server_send(client, output + "\n");
@@ -740,14 +745,7 @@ void do_command(char *command_c, int client)
 
         if (!tx_hashes.empty()) {
             for (auto &it : tx_hashes) {
-                output += it + ",";
-            }
-
-            /* Remove last character (,) */
-            try {
-                output.pop_back();
-            } catch (...) {
-                // Do nothing for now.
+                server_send(client, it + "\n");
             }
 
             server_send(client, output + "\n");
