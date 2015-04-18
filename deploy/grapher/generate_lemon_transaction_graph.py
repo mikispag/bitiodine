@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os, sys
+import gc, os, sys
 lib_path = os.path.abspath('../common')
 sys.path.append(lib_path)
 
@@ -11,10 +11,10 @@ from collections import Counter
 
 ###
 
-def padWithSpaces(address):
-  if len(address) < 34:
-    address += " " * (34 - len(address))
-  return address
+def padWithSpaces(field):
+  if len(field) < 34:
+    field += " " * (34 - len(field))
+  return field
 
 FILENAME = "tx_graph.lgf.new"
 db = SQLiteWrapper('../blockchain/blockchain.sqlite')
@@ -34,11 +34,19 @@ with open(FILENAME, 'w') as f:
   for address in addresses_res:
     f.write(address[0] + "\n")
 
+  # Clear variable to free up memory (maybe)
+  addresses_res = None
+  gc.collect()
+
   f.write("\n")
   f.write("@arcs\n")
   f.write(" " * 35)
   f.write(" " * 35)
-  f.write("tx_hash\n")
+  f.write("tx_hash")
+  f.write(" " * 58)
+  f.write("time")
+  f.write(" " * 7)
+  f.write("value\n")
 
   if os.path.isfile("tx_graph.lgf"):
     with open("tx_graph.lgf") as f_r:
@@ -68,6 +76,7 @@ with open(FILENAME, 'w') as f:
       in_res = db.query(in_query_addr, (tx_id,))
       out_res = db.query(out_query_addr, (tx_id,))
       tx_hash = db.query(tx_hash_query, (tx_id,), fetch_one=True)
+      time = db.query(time_query, (tx_id,), fetch_one=True)
     except Exception as e:
       print(e)
       # Just go to the next transaction
@@ -76,6 +85,7 @@ with open(FILENAME, 'w') as f:
     # IN
     in_addr = set()
     out_addr = set()
+    values = {}
     for line in in_res:
       address = line[0]
       if address is not None:
@@ -83,14 +93,15 @@ with open(FILENAME, 'w') as f:
       else:
         in_addr.add("GENERATED")
 
-    # OUT  
+    # OUT
     for out in out_res:
       if out[0] not in in_addr:
         out_addr.add(out[0])
+        values[out[0]] = value
 
     for in_address in in_addr:
       for out_address in out_addr:
-        f.write(padWithSpaces(in_address) + " " + padWithSpaces(out_address) + " " + tx_hash + "\n")
+        f.write(padWithSpaces(in_address) + " " + padWithSpaces(out_address) + " " + tx_hash + " " + time + " " + values[out_address] + "\n")
 
   f.write("\n")
   f.write("@attributes\n")
