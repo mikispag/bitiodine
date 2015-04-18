@@ -84,7 +84,7 @@ class BitIodine {
 		return tuple($distance, $address_path, $tx_path);
 	}
 
-	public static function A2A(string $from, string $to): Vector<string> {
+	public static function A2A(string $from, string $to): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -145,13 +145,26 @@ class BitIodine {
 			throw new RuntimeException("There are no transactions between the two addresses.", 404);
 		}
 
-		$tx_hashes = new Vector(explode(',', $response_array[1]));
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+
+		$tx_hashes = Vector {};
+		$timestamps = Vector {};
+		$values = Vector {};
+		foreach ($response_array as $line) {
+			$parsed_line = new Vector(explode(',', $line));
+			$tx_hashes[] = $parsed_line[0];
+			$timestamps[] = intval($parsed_line[1]);
+			$values[] = floatval(intval($parsed_line[2])/10e8);
+		}
 
 		write_log(($cached !== false), $request, "OK");
-		return $tx_hashes;
+		return ($tx_hashes, $timestamps, $values);
 	}
 
-	public static function A2C(string $from, int $to_cluster): Vector<string> {
+	public static function A2C(string $from, int $to_cluster): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -212,13 +225,26 @@ class BitIodine {
 			throw new RuntimeException("There are no transactions between the address and the cluster.", 404);
 		}
 
-		$tx_hashes = new Vector(explode(',', $response_array[1]));
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+
+		$tx_hashes = Vector {};
+		$timestamps = Vector {};
+		$values = Vector {};
+		foreach ($response_array as $line) {
+			$parsed_line = new Vector(explode(',', $line));
+			$tx_hashes[] = $parsed_line[0];
+			$timestamps[] = intval($parsed_line[1]);
+			$values[] = floatval(intval($parsed_line[2])/10e8);
+		}
 
 		write_log(($cached !== false), $request, "OK");
-		return $tx_hashes;
+		return ($tx_hashes, $timestamps, $values);
 	}
 
-	public static function C2A(int $from_cluster, string $address): Vector<string> {
+	public static function C2A(int $from_cluster, string $address): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -279,13 +305,26 @@ class BitIodine {
 			throw new RuntimeException("There are no transactions between the cluster and the address.", 404);
 		}
 
-		$tx_hashes = new Vector(explode(',', $response_array[1]));
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+
+		$tx_hashes = Vector {};
+		$timestamps = Vector {};
+		$values = Vector {};
+		foreach ($response_array as $line) {
+			$parsed_line = new Vector(explode(',', $line));
+			$tx_hashes[] = $parsed_line[0];
+			$timestamps[] = intval($parsed_line[1]);
+			$values[] = floatval(intval($parsed_line[2])/10e8);
+		}
 
 		write_log(($cached !== false), $request, "OK");
-		return $tx_hashes;
+		return ($tx_hashes, $timestamps, $values);
 	}
 
-	public static function C2C(int $from_cluster, int $to_cluster): Vector<string> {
+	public static function C2C(int $from_cluster, int $to_cluster): (Vector<string>, Vector<int>, Vector<float>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";
 
@@ -341,10 +380,23 @@ class BitIodine {
 			throw new RuntimeException("There are no transactions between the two clusters.", 404);
 		}
 
-		$tx_hashes = new Vector(explode(',', $response_array[1]));
+		try {
+			$response_array->pop();
+			$response_array->removeKey(0);
+		} catch (Exception $e) {}
+
+		$tx_hashes = Vector {};
+		$timestamps = Vector {};
+		$values = Vector {};
+		foreach ($response_array as $line) {
+			$parsed_line = new Vector(explode(',', $line));
+			$tx_hashes[] = $parsed_line[0];
+			$timestamps[] = intval($parsed_line[1]);
+			$values[] = floatval(intval($parsed_line[2])/10e8);
+		}
 
 		write_log(($cached !== false), $request, "OK");
-		return $tx_hashes;
+		return ($tx_hashes, $timestamps, $values);
 	}
 
 	public static function stats(): (int, int) {
