@@ -388,7 +388,7 @@ unordered_set<string> a2a(string from, string to)
 
     for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         if (address[g.target(a)] != to) {
-            tx_hashes.insert(tx_hash(a));
+            tx_hashes.insert(tx_hash[a]);
         }
     }
 
@@ -414,7 +414,7 @@ unordered_set<string> a2c(string from, int cluster)
 
     for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         if (target_addresses.find(address[g.target(a)]) != target_addresses.end()) {
-            tx_hashes.insert(tx_hash(a));
+            tx_hashes.insert(tx_hash[a]);
         }
     }
 
@@ -440,7 +440,7 @@ unordered_set<string> c2a(int cluster, string to)
 
     for (SmartDigraph::InArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         if (source_addresses.find(address[g.source(a)]) != source_addresses.end()) {
-            tx_hashes.insert(tx_hash(a));
+            tx_hashes.insert(tx_hash[a]);
         }
     }
 
@@ -470,7 +470,7 @@ unordered_set<string> c2c(int cluster_from, int cluster_to)
 
         for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
             if (target_addresses.find(address[g.target(a)]) != target_addresses.end()) {
-                tx_hashes.insert(tx_hash(a));
+                tx_hashes.insert(tx_hash[a]);
             }
         }
     }
@@ -824,4 +824,3 @@ void do_command(char *command_c, int client)
         server_send(client, "404 COMMAND NOT FOUND\n");
     }
 }
-
