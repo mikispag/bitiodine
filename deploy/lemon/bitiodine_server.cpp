@@ -56,6 +56,8 @@ SmartDigraph g;
 SmartDigraph::Node genesis = INVALID;
 SmartDigraph::NodeMap<string> address(g);
 SmartDigraph::ArcMap<string> tx_hash(g);
+SmartDigraph::ArcMap<string> timestamp(g);
+SmartDigraph::ArcMap<string> value(g);
 
 unordered_map<string, int> clusters;
 
@@ -81,6 +83,8 @@ int main()
     try {
         digraphReader(g, "../grapher/tx_graph.lgf").  // read the directed graph into g
         arcMap("tx_hash", tx_hash).                   // read the 'tx_hash' arc map into tx_hash
+        arcMap("time", timestamp).
+        arcMap("value", value).
         nodeMap("label", address).
         node("source", genesis).                      // read 'source' node to genesis
         run();
@@ -384,7 +388,7 @@ unordered_set<string> a2a(string from, string to)
 
     for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         if (address[g.target(a)] != to) {
-            tx_hashes.insert(address[g.target(a)]);
+            tx_hashes.insert(tx_hash(a));
         }
     }
 
@@ -410,7 +414,7 @@ unordered_set<string> a2c(string from, int cluster)
 
     for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         if (target_addresses.find(address[g.target(a)]) != target_addresses.end()) {
-            tx_hashes.insert(address[g.target(a)]);
+            tx_hashes.insert(tx_hash(a));
         }
     }
 
@@ -436,7 +440,7 @@ unordered_set<string> c2a(int cluster, string to)
 
     for (SmartDigraph::InArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
         if (source_addresses.find(address[g.source(a)]) != source_addresses.end()) {
-            tx_hashes.insert(address[g.source(a)]);
+            tx_hashes.insert(tx_hash(a));
         }
     }
 
@@ -466,7 +470,7 @@ unordered_set<string> c2c(int cluster_from, int cluster_to)
 
         for (SmartDigraph::OutArcIt a(g, s); a != INVALID && s != INVALID; ++a) {
             if (target_addresses.find(address[g.target(a)]) != target_addresses.end()) {
-                tx_hashes.insert(address[g.target(a)]);
+                tx_hashes.insert(tx_hash(a));
             }
         }
     }
