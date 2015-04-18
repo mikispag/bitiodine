@@ -155,9 +155,11 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			$tx_hashes[] = $parsed_line[0];
-			$timestamps[] = intval($parsed_line[1]);
-			$values[] = floatval(intval($parsed_line[2])/10e8);
+			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+				$tx_hashes[] = $parsed_line[0];
+				$timestamps[] = intval($parsed_line[1]);
+				$values[] = floatval(intval($parsed_line[2])/10e8);
+			}
 		}
 
 		write_log(($cached !== false), $request, "OK");
@@ -235,9 +237,11 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			$tx_hashes[] = $parsed_line[0];
-			$timestamps[] = intval($parsed_line[1]);
-			$values[] = floatval(intval($parsed_line[2])/10e8);
+			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+				$tx_hashes[] = $parsed_line[0];
+				$timestamps[] = intval($parsed_line[1]);
+				$values[] = floatval(intval($parsed_line[2])/10e8);
+			}
 		}
 
 		write_log(($cached !== false), $request, "OK");
@@ -315,9 +319,11 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			$tx_hashes[] = $parsed_line[0];
-			$timestamps[] = intval($parsed_line[1]);
-			$values[] = floatval(intval($parsed_line[2])/10e8);
+			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+				$tx_hashes[] = $parsed_line[0];
+				$timestamps[] = intval($parsed_line[1]);
+				$values[] = floatval(intval($parsed_line[2])/10e8);
+			}
 		}
 
 		write_log(($cached !== false), $request, "OK");
@@ -390,9 +396,11 @@ class BitIodine {
 		$values = Vector {};
 		foreach ($response_array as $line) {
 			$parsed_line = new Vector(explode(',', $line));
-			$tx_hashes[] = $parsed_line[0];
-			$timestamps[] = intval($parsed_line[1]);
-			$values[] = floatval(intval($parsed_line[2])/10e8);
+			if ($parsed_line[1] >= $min_time && $parsed_line[1] <= $max_time && $parsed_line[2] >= $min_value && $parsed_line[2] <= $max_value) {
+				$tx_hashes[] = $parsed_line[0];
+				$timestamps[] = intval($parsed_line[1]);
+				$values[] = floatval(intval($parsed_line[2])/10e8);
+			}
 		}
 
 		write_log(($cached !== false), $request, "OK");
