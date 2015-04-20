@@ -7,7 +7,7 @@ class SQLiteWrapper:
 		self.cursor.execute("PRAGMA cache_size=4000")
 		self.conn.commit()
 
-	def query(self, sql, params=None, fetch_one=False, multi=False):
+	def query(self, sql, params=None, iterator=False, fetch_one=False, multi=False):
 		try:
 			with self.conn as conn:
 				cursor = conn.cursor()
@@ -17,6 +17,8 @@ class SQLiteWrapper:
 					cursor.execute(sql)
 				if params is not None and not multi:
 					cursor.execute(sql, params)
+				if iterator:
+					return cursor
 				if fetch_one:
 					return cursor.fetchone()[0]
 				if not multi:

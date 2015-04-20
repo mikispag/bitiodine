@@ -71,7 +71,7 @@ vector<string> tokenize(string const &input)
 bool bitcoin_address_quick_valid(string address)
 {
     int length = address.length();
-    if (address[0] != '1' || length < 27 || length > 34) {
+    if (length < 27 || length > 34) {
         return false;
     }
     bool contains_invalid = address.find_first_not_of(BITCOIN_CHARSET) != string::npos;
