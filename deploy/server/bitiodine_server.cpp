@@ -145,7 +145,7 @@ int main()
             transactions[tx_id] = tx_struct;
             
             while (address_status == SQLITE_ROW) {
-                address = string(reinterpret_cast<const char*>(sqlite3_column_text(address_stmt, 0)));
+                string address = string(reinterpret_cast<const char*>(sqlite3_column_text(address_stmt, 0)));
                 
                 if (addresses.find(address) == addresses.end()) {
                     address_struct = new ADDRESS();
@@ -415,9 +415,7 @@ unordered_set<string> c2c(unsigned int cluster_from, unsigned int cluster_to)
     unordered_set<string> tx_hashes;
     unordered_set<ADDRESS*> source_addresses;
     unordered_set<ADDRESS*> target_addresses;
-    
-    auto source_address = new ADDRESS();
-    
+        
     for (auto &it : clusters) {
         if (it.second == cluster_from) {
             source_addresses.insert(it.first);
@@ -426,12 +424,14 @@ unordered_set<string> c2c(unsigned int cluster_from, unsigned int cluster_to)
         }
     }
     
-    for (auto &it : source_address->txs_out) {
-        for (int i = 0; i != it->recipients.size(); i++) {
-            if (target_addresses.find(it->recipients[i]) != target_addresses.end()) {
-                stringstream output;
-                output << it->tx_hash << "," << it->timestamp << "," << it->amounts[i];
-                tx_hashes.insert(output.str());
+    for (auto &source_address : source_addresses) {
+        for (auto &it : source_address->txs_out) {
+            for (int i = 0; i != it->recipients.size(); i++) {
+                if (target_addresses.find(it->recipients[i]) != target_addresses.end()) {
+                    stringstream output;
+                    output << it->tx_hash << "," << it->timestamp << "," << it->amounts[i];
+                    tx_hashes.insert(output.str());
+                }
             }
         }
     }
