@@ -419,7 +419,8 @@ unordered_set<string> c2c(unsigned int cluster_from, unsigned int cluster_to)
     for (auto &it : clusters) {
         if (it.second == cluster_from) {
             source_addresses.insert(it.first);
-        } else if (it.second == cluster_to) {
+        }
+        if (it.second == cluster_to) {
             target_addresses.insert(it.first);
         }
     }
@@ -661,10 +662,11 @@ void do_command(char *command_c, int client)
                 server_send(client, it + "\n");
             }
             
-            server_send(client, output + "\n");
-            server_send(client, "END\n");
-        } else
-        server_send(client, "500 No transactions.\n");
+        } else {
+            server_send(client, "500 No transactions.\n");
+        }
+
+        server_send(client, "END\n");
         return;
         } else if (tokens[0] == "C2A") {
         if (tokens.size() < 3 || !bitcoin_address_quick_valid(tokens[2])) {
@@ -680,11 +682,11 @@ void do_command(char *command_c, int client)
             for (auto &it : tx_hashes) {
                 server_send(client, it + "\n");
             }
-            
-            server_send(client, output + "\n");
-            server_send(client, "END\n");
-        } else
-        server_send(client, "500 No transactions.\n");
+        } else {
+            server_send(client, "500 No transactions.\n");
+        }
+        
+        server_send(client, "END\n");
         return;
         } else if (tokens[0] == "C2C") {
         if (tokens.size() < 3) {
@@ -700,11 +702,11 @@ void do_command(char *command_c, int client)
             for (auto &it : tx_hashes) {
                 server_send(client, it + "\n");
             }
-            
-            server_send(client, output + "\n");
-            server_send(client, "END\n");
-        } else
-        server_send(client, "500 No transactions.\n");
+        } else {
+            server_send(client, "500 No transactions.\n");
+        }
+        
+        server_send(client, "END\n");
         return;
         } else if (tokens[0] == "PRINT_CLUSTER") {
         unsigned int cluster;
