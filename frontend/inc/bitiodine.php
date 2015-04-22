@@ -15,6 +15,32 @@ class BitIodine {
 	private static $errstr = "";
 	private static $errno = 0;
 
+	public static function getLabels(): ImmMap<string, int> {
+		$redis = RedisWrapper::getRedis();
+		$response = "";
+
+		$labels_map = Map {};
+		$request = "GET_LABELS";
+
+		$cached = $redis->get($request);
+
+		if ($cached) {
+			return new ImmMap(unserialize($cached));
+		} else {
+			$db = new SQLite3('/home/miki/bitiodine/deploy/clusterizer/cluster_labels.sqlite');
+			$stmt = $db->prepare('SELECT cluster_id, label FROM cluster_labels ORDER BY cluster_id');
+			$result = $stmt->execute();
+
+			while ($row = $result->fetchArray()) {
+			    $labels_map[$row['label']] = $row['cluster_id'];
+			}
+			$redis->set($request, serialize(new ImmMap($labels_map)), 3600 * self::$HOURS_CACHE);
+		}
+
+		write_log(($cached !== false), $request, "OK");
+		return new ImmMap($labels_map);
+	}
+
 	public static function shortest_path_A2A(string $from, string $to): (int, Vector<string>, Vector<string>) {
 		$redis = RedisWrapper::getRedis();
 		$response = "";

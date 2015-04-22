@@ -15,7 +15,7 @@ try {
 if (!isset($_GET['address'])) {
     $show_form = TRUE;
 } else {
-    $address = trim($_GET['address']);
+    $address = $_GET['address'];
 
     Security::throttle_ip_web();
 
@@ -62,7 +62,7 @@ if ($show_form) {
     } else {
         $header_message = "Here's your cluster.";
         $subheader = <p>
-                        The same entity that owns<br /><strong>{$address}</strong><br />likely controls <strong>{$cluster_size} address{$plural_form}</strong>
+                        The entity owning<br /><strong>{$address}</strong><br />likely controls <strong>{$cluster_size} address{$plural_form}</strong>
                     </p>;
         $description_or_error = <p>Click on an address to get more information.</p>;
         $results = <p class="orange padded"></p>;

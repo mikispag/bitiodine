@@ -8,6 +8,7 @@ $title = "BitIodine - Get more from the blockchain";
 
 try {
     list($usd_price, $eur_price, $gbp_price, $jpy_price) = BlockChain::getBTCPrice();
+    $labels_map = BitIodine::getLabels();
 } catch (Exception $e) {
     // Nothing...
 }
@@ -18,6 +19,19 @@ try {
     $nodes = "N/A";
     $arcs = "N/A";
 }
+
+$labels_select_from = <select id="from_cluster" name="from_cluster" />;
+$labels_select_to = <select id="to_cluster" name="to_cluster" />;
+$labels_select_from->appendChild(<option value="" selected="selected"> -- </option>);
+$labels_select_to->appendChild(<option value="" selected="selected"> -- </option>);
+foreach ($labels_map as $label => $cluster_id) {
+    $labels_select_from->appendChild(<option value={$cluster_id}>{$label}</option>);
+    $labels_select_to->appendChild(<option value={$cluster_id}>{$label}</option>);
+}
+$labels_select_from->appendChild(<option disabled="disabled">______________</option>);
+$labels_select_from->appendChild(<option value="CUSTOM_CLUSTER">Cluster of →</option>);
+$labels_select_to->appendChild(<option disabled="disabled">______________</option>);
+$labels_select_to->appendChild(<option value="CUSTOM_CLUSTER">Cluster of →</option>);
 
 $content =
         <div id="main-content">
@@ -31,18 +45,26 @@ $content =
                 <section class="show">
                     <h1>Get <span class="gold">more</span> from the <span class="gold">blockchain</span>.</h1>
                     <p>
-                        With <strong class="gold">BitIodine</strong> you can find <strong>connecting paths</strong> between two addresses, visualize <strong>clusters</strong> controlled by the same user or entity, and <strong>get insights</strong> about activity on the network.
+                        With <strong class="gold">BitIodine</strong> you can <strong>find transactions</strong> between two addresses or two clusters, address-to-cluster and cluster-to-address, <strong>get a list of addresses</strong> that <strong>sent/received Bitcoin to/from a particular address</strong> and visualize <strong>clusters</strong> controlled by the same user or entity, filtering by <strong>amount</strong> and <strong>time</strong>.
                     </p>
 
-                    <p>
-                        Get details about <strong>shortest paths</strong> between <strong>two addresses</strong>.
-                    </p>
 
                     <form>
-                        <input type="text" class="center" id="from_address" placeholder="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" value="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" />
-                        <button class="button" id="path_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
-                        <input type="text" class="center" id="to_address" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" value="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" />
+                        {$labels_select_from}<span id="from_address_toggle"> <span id="from_or">or</span> 
+                        <input type="text" class="center" id="from_address" placeholder="18iEz617DoDp8CNQUyyrjCcC7XCGDf5SVb" value="18iEz617DoDp8CNQUyyrjCcC7XCGDf5SVb" /></span>
                         <br class="clear" />
+                        <button class="button" id="path_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
+                        <br class="clear" />
+                        {$labels_select_to}<span id="to_address_toggle"> <span id="to_or">or</span>
+                        <input type="text" class="center" id="to_address" placeholder="1MhxtR7FojcbBnfni1wDiJ9nBZtTH6nfia" value="1MhxtR7FojcbBnfni1wDiJ9nBZtTH6nfia" /></span>
+                        <br class="clear" />
+                        <span class="gold">฿</span>
+                        <br class="clear" />
+                        <div id="amounts"><input type="text" class="center value gold" id="min_value" placeholder="-" /><span class="gold">to</span><input type="text" class="center value gold" id="max_value" placeholder="-" /></div>
+                        <br class="clear" />
+                        <div id="times"><input type="text" class="center time green" value="" id="min_time" placeholder="no time limit" /><span class="green">to</span><input type="text" class="center time green" value="" id="max_time" placeholder="no time limit" /></div>
+                        <input type="hidden" name="min_time" value="0" />
+                        <input type="hidden" name="max_time" value="2147483647" />
                     </form>
 
                     <p>
@@ -57,17 +79,15 @@ $content =
                         <button class="button" id="cluster_button">Cluster</button>
                     </form>
 
+                    <p class="small">© - a project by <a href="https://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed ~6h. {$nodes} nodes, {$arcs} arcs in the graph.
+                    </p>
+
                 </section>
 
             </main>
 
+            
 
-            <footer id="main-footer" class="show nav-animation-element">
-                <div class="inner-col">
-                    <p>© - a project by <a href="https://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed ~6h. {$nodes} nodes, {$arcs} arcs in the graph.
-                    </p>
-                </div>
-            </footer>
         </div>;
 
 include("inc/template/page.php");

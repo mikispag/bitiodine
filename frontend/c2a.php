@@ -5,10 +5,11 @@ require("inc/bitiodine.php");
 require("inc/security.php");
 require("inc/xhp/init.php");
 
-$title = "BitIodine - Address to address";
+$title = "BitIodine - Cluster to address";
 
 try {
     list($usd_price, $eur_price, $gbp_price, $jpy_price) = BlockChain::getBTCPrice();
+    $labels_map = BitIodine::getLabels();
 } catch (Exception $e) {
     $price_error = TRUE;
 }
@@ -16,8 +17,8 @@ try {
 if (!isset($_GET['from']) || !isset($_GET['to'])) {
     header("Location: https://bitiodine.net/");
 } else {
-    $from = trim($_GET['from']);
-    $to = trim($_GET['to']);
+    $from = $_GET['from'];
+    $to = $_GET['to'];
     $min_time = 0;
     $max_time = 2147483647;
     $min_value = floatval(0);
@@ -36,9 +37,19 @@ if (!isset($_GET['from']) || !isset($_GET['to'])) {
     Security::throttle_ip_web();
 
     try {
-        list($tx_hashes, $timestamps, $values) = BitIodine::A2A($from, $to, $min_time, $max_time, $min_value, $max_value);
+        if (!is_numeric($_GET['from'])) {
+            $from = BitIodine::cluster_id($from);
+        }
+        list($tx_hashes, $timestamps, $values) = BitIodine::C2A($from, $to, $min_time, $max_time, $min_value, $max_value);
         $n_tx = $tx_hashes->count();
         $plural_form = ($n_tx > 1) ? "s" : "";
+
+        foreach ($labels_map as $label => $cluster_id) {
+            if ($cluster_id == $from) {
+                $cluster_label_show = $label;
+                break;
+            }
+        }
     } catch (Exception $e) {
         $error_message = $e->getMessage();
     }
@@ -46,6 +57,7 @@ if (!isset($_GET['from']) || !isset($_GET['to'])) {
 }
 
 $section_show = <section class="show" />;
+$cluster_label_show = $from;
 
 if (isset($error_message)) {
     $header_message = "No transactions found :(";
@@ -54,7 +66,7 @@ if (isset($error_message)) {
 } else {
     $header_message = "Here are your transactions.";
     $subheader = <p>
-                    We found <strong>{$n_tx} transaction{$plural_form}</strong> from <strong>{BlockChain::getShortAddress($from)}</strong> to <strong>{BlockChain::getShortAddress($to)}</strong> matching your criteria.
+                    We found <strong>{$n_tx} transaction{$plural_form}</strong> from <a href={"/cluster/" . $_GET['from']}><strong>cluster {$cluster_label_show}</strong></a> to <strong>{BlockChain::getShortAddress($from)}</strong> matching your criteria.
                 </p>;
     $description_or_error = <p>Click on a transaction to get more details.</p>;
     $tbody = <tbody />;        

@@ -1,5 +1,5 @@
 <?hh
-
+die("Revamping the API, check back soon!");
 require("inc/blockchain.php");
 require("inc/bitiodine.php");
 require("inc/xhp/init.php");

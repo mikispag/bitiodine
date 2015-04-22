@@ -2,15 +2,6 @@ article,aside,details,figcaption,figure,footer,header,hgroup,main,nav,section,su
     display: block;
 }
 
-audio,canvas,video {
-    display: inline-block;
-}
-
-audio:not([controls]) {
-    display: none;
-    height: 0;
-}
-
 [hidden] {
     display: none;
 }
@@ -61,7 +52,7 @@ mark {
     color: #000;
 }
 
-code,kbd,pre,samp {
+code,kbd,pre,samp,.mono {
     font-family: monospace,serif;
     font-size: 1em;
 }
@@ -1479,6 +1470,10 @@ footer#main-footer p {
     color: #ffd700 !important;
 }
 
+.green {
+    color: lightgreen !important;
+}
+
 .padded {
     padding: 10px;
 }
@@ -1504,4 +1499,15 @@ footer#main-footer p {
 
 #flags {
     font-weight: bold;
+}
+
+#result_table {
+    width: 100%;
+    font-size: 1.5em;
+}
+
+th {
+    text-decoration: underline;
+    padding: 5px;
+    cursor: pointer;
 }

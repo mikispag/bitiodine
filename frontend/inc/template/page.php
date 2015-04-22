@@ -5,7 +5,7 @@ $head =
     <meta charset="utf-8" />
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="keywords" content="bitiodine,blockchain analysis,bitcoin forensics" />
-    <meta name="description" content="With BitIodine you can find connecting paths between two addresses, visualize clusters controlled by the same user or entity, and get insights about activity on the network." />
+    <meta name="description" content="With BitIodine you can find transactions between two addresses or two clusters, address-to-cluster and cluster-to-address, get a list of addresses that sent/received Bitcoin to/from a particular address and visualize clusters controlled by the same user or entity, filtering by amount and time." />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta property="og:image" content="/img/og.png" />
@@ -15,6 +15,7 @@ $head =
     <link rel="stylesheet" href="/css/fonts.css" />
     <link rel="stylesheet" href="/css/style.css" />
     <link rel="stylesheet" href="/css/bitcoin.css" />
+    <link rel="stylesheet" href="/css/datetime.css"/>
 
     <!--[if lt IE 9]>
     <script src="/js/html5shiv.js"></script>
@@ -22,6 +23,9 @@ $head =
 
     <script src="/js/bitiodine.js"></script>
     <script src={"/js/" . basename($_SERVER['SCRIPT_FILENAME'], ".php") . "_jquery.js"}></script>
+    <script src="/js/jquery-dateFormat.min.js"></script>
+    <script src="/js/stupidtable.js"></script>
+    <script src="/js/datetime.js"></script>
 
     <title>{$title}</title>
 </head>;
@@ -43,23 +47,15 @@ $header =
             <div class="inner-col">
                 <nav>
                     <ul class="pages">
-                        <li><a href="/">Home</a>
-                        </li>
-                        <li><a href="/path">Find paths</a>
-                        </li>
-                        <li><a href="/cluster">See clusters</a>
-                        </li>
-                        <li><a href="#" class="soon">Get insights</a>
-                        </li>
+                        <li><a href="/">Home</a></li>
+                        <li><a href="/">Search transactions</a></li>
+                        <li><a href="/cluster">See clusters</a></li>
                         {$price_widget}
                     </ul>
                     <ul class="external">
-                        <li><a href="https://miki.it/articles/papers/#bitiodine"><span>About</span></a>
-                        </li>
-                        <li><a href="/api"><span>API</span></a>
-                        </li>
-                        <li><a href="&#109;ailto&#58;%&#55;&#51;&#117;%70po%&#55;2%74&#64;%62itiod&#105;ne.n&#37;&#54;5%&#55;4"><span>Contact</span></a>
-                        </li>
+                        <li><a href="https://miki.it/articles/papers/#bitiodine"><span>About</span></a></li>
+                        <li><a href="/api"><span>API</span></a></li>
+                        <li><a href="&#109;ailto&#58;%&#55;&#51;&#117;%70po%&#55;2%74&#64;%62itiod&#105;ne.n&#37;&#54;5%&#55;4"><span>Contact</span></a></li>
 
                         <li class="button">
                             <a href="bitcoin:1N9iYCVz5p8QeZF1wTqZxpxKMdTuaeMYRr">Donate</a>

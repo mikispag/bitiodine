@@ -235,7 +235,7 @@ div#bitcoin-logo {
     width: 214px;
     height: 220px;
     display: block;
-    margin: -50px auto 0;
+    margin: -100px auto 0;
 }
 
 @media screen and (max-width:479px) {
@@ -370,7 +370,11 @@ form {
     }
 }
 
-form input,form button.button {
+select option {
+    background: rgba(0,0,0,0.3);
+}
+
+form input, form button.button, form select {
     height: 39px;
     padding: 6px;
     margin: 10px;
@@ -387,7 +391,7 @@ form input,form button.button {
     transform: translateZ(0);
 }
 
-form input {
+form input, form select {
     display: inline-block;
     vertical-align: middle;
     background: 0;
@@ -403,27 +407,27 @@ form input {
     -webkit-appearance: none;
 }
 
-form input:focus {
+form input:focus, form select:focus {
     border-color: #fff;
     outline: 0;
 }
 
-form input::-webkit-input-placeholder {
+form input::-webkit-input-placeholder, form select::-webkit-input-placeholder {
     font-weight: 300;
     color: #aac0dd;
 }
 
-form input::-moz-placeholder {
+form input::-moz-placeholder, form select::-moz-placeholder {
     font-weight: 300;
     color: #aac0dd;
 }
 
-form input:-moz-placeholder {
+form input:-moz-placeholder, form select:-moz-placeholder {
     font-weight: 300;
     color: #aac0dd;
 }
 
-form input:-ms-input-placeholder {
+form input:-ms-input-placeholder, form select:-ms-input-placeholder {
     font-weight: 300;
     color: #aac0dd;
 }
@@ -444,8 +448,20 @@ form button.button {
     background-image: linear-gradient(rgba(93,182,232,0.2),rgba(22,142,218,0.2),rgba(22,142,218,0.2) 90%,rgba(29,147,221,0.2));
 }
 
+.small {
+    font-size: small;
+}
+
 .small_button {
     width: 50px !important;
+}
+
+.time {
+    width: 150px !important;
+}
+
+.value {
+    width: 80px !important;
 }
 
 form button.button:active {

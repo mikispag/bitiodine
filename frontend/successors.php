@@ -49,7 +49,7 @@ if ($show_form) {
     } else {
         $header_message = "Here are the successors.";
         $subheader = <p>
-                        <strong>{$cluster_size} address{$plural_form}</strong> received Bitcoin from <strong>{$address}</strong>.
+                        <strong>{$result_size} address{$plural_form}</strong> received Bitcoin from <strong>{$address}</strong>.
                     </p>;
         $description_or_error = <p>Click on an address to get more information.</p>;
         $results = <p class="orange padded"></p>;

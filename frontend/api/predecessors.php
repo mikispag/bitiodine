@@ -42,7 +42,7 @@ if (!isset($error_message)) {
 $addresses = $predecessors;
 
 for (; $steps > 0; $steps--) {
-    $to_be_added = new Set<String>;
+    $to_be_added = new Set();
     foreach ($addresses as $address) {
         try {
             $to_be_added->addAll(BitIodine::predecessors($address));
