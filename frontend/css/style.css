@@ -53,7 +53,7 @@ mark {
 }
 
 code,kbd,pre,samp,.mono {
-    font-family: monospace,serif;
+    font-family: 'Droid Sans Mono',serif;
     font-size: 1em;
 }
 
@@ -1460,7 +1460,7 @@ footer#main-footer p {
 }
 
 .orange a {
-    font-family: 'Inconsolata';
+    font-family: 'Droid Sans Mono';
     color: #D65316;
     font-weight: bolder;
     font-size: larger;

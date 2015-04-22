@@ -401,10 +401,14 @@ form input, form select {
     -o-transition: border-color 300ms ease;
     -ms-transition: border-color 300ms ease;
     transition: border-color 300ms ease;
-    width: 300px;
+    width: 350px;
     color: #fff;
-    font-size: smaller;
+    font-family: 'Droid Sans Mono';
     -webkit-appearance: none;
+}
+
+form select {
+    width: 200px;
 }
 
 form input:focus, form select:focus {
