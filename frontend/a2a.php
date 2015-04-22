@@ -56,7 +56,7 @@ if (isset($error_message)) {
     $subheader = <p>
                     We found <strong>{$n_tx} transaction{$plural_form}</strong> from <strong>{BlockChain::getShortAddress($from)}</strong> to <strong>{BlockChain::getShortAddress($to)}</strong> matching your criteria.
                 </p>;
-    $description_or_error = <p>Click on a transaction to get more details.</p>;
+    $description_or_error = <p>Click on the table header to sort by amount or time.</p>;
     $tbody = <tbody />;        
 
     foreach ($tx_hashes as $i => $tx) {

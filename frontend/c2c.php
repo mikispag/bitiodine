@@ -74,7 +74,7 @@ if (isset($error_message)) {
     $subheader = <p>
                     We found <strong>{$n_tx} transaction{$plural_form}</strong> from <a href={"/cluster/" . $_GET['from']}><strong>cluster {$cluster_label_show_from}</strong></a> to <a href={"/cluster/" . $_GET['to']}><strong>cluster {$cluster_label_show_to}</strong></a> matching your criteria.
                 </p>;
-    $description_or_error = <p>Click on a transaction to get more details.</p>;
+    $description_or_error = <p>Click on the table header to sort by amount or time.</p>;
     $tbody = <tbody />;        
 
     foreach ($tx_hashes as $i => $tx) {

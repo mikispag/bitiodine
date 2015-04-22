@@ -68,7 +68,7 @@ if (isset($error_message)) {
     $subheader = <p>
                     We found <strong>{$n_tx} transaction{$plural_form}</strong> from <a href={"/cluster/" . $_GET['from']}><strong>cluster {$cluster_label_show}</strong></a> to <strong>{BlockChain::getShortAddress($from)}</strong> matching your criteria.
                 </p>;
-    $description_or_error = <p>Click on a transaction to get more details.</p>;
+    $description_or_error = <p>Click on the table header to sort by amount or time.</p>;
     $tbody = <tbody />;        
 
     foreach ($tx_hashes as $i => $tx) {
