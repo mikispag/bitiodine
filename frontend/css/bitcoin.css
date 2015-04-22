@@ -452,6 +452,10 @@ form button.button {
     font-size: small;
 }
 
+.small a:hover {
+    color: #eee;
+}
+
 .small_button {
     width: 50px !important;
 }
