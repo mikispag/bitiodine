@@ -40,7 +40,7 @@ if (!isset($_GET['from']) || !isset($_GET['to'])) {
         if (!is_numeric($_GET['from'])) {
             $from = BitIodine::cluster_id($from);
         }
-        list($tx_hashes, $timestamps, $values) = BitIodine::C2A($from, $to, $min_time, $max_time, $min_value, $max_value);
+        list($tx_hashes, $timestamps, $values) = BitIodine::C2A(intval($from), $to, $min_time, $max_time, $min_value, $max_value);
         $n_tx = $tx_hashes->count();
         $plural_form = ($n_tx > 1) ? "s" : "";
 
