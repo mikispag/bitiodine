@@ -68,7 +68,7 @@ $content =
                     </form>
 
                     <p>
-                        Get <strong>addresses</strong> that sent/received Bitcoin to/from a particular <strong>address</strong>, or find out which other <strong>addresses</strong> are likely to be <strong>controlled</strong> by the same <strong>person</strong> or <strong>entity</strong>.
+                        Get <strong>addresses</strong> that sent/received Bitcoin to/from a particular <strong>address</strong>, or find out all the <strong>addresses</strong> are likely to be <strong>controlled</strong> by the same <strong>person</strong> or <strong>entity</strong>.
                     </p>
 
                     <form>
