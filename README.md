@@ -1,11 +1,11 @@
 BitIodine
 =========
 
-With [BitIodine](https://bitiodine.net) you can find connecting paths between two Bitcoin addresses, visualize clusters controlled by the same user or entity, and get insights about activity on the network.
+With [BitIodine](https://bitiodine.net) you can find transactions between two addresses or two clusters, address-to-cluster and cluster-to-address, get a list of addresses that sent/received Bitcoin to/from a particular address and visualize clusters controlled by the same user or entity, filtering by amount and time.
 
-![BitIodine building blocks](http://miki.it/images/bitiodine_design.png)
+![BitIodine building blocks](https://miki.it/images/bitiodine_design.png)
 
-More info at: http://miki.it/articles/papers/#bitiodine.
+More info at: https://bitiodine.net.
 
 Dependencies
 -------------
