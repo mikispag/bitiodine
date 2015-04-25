@@ -28,7 +28,7 @@ class BitIodine {
 			return new ImmMap(unserialize($cached));
 		} else {
 			$db = new SQLite3('/home/miki/bitiodine/deploy/clusterizer/cluster_labels.sqlite');
-			$stmt = $db->prepare('SELECT cluster_id, label FROM cluster_labels ORDER BY cluster_id');
+			$stmt = $db->prepare('SELECT cluster_id, label FROM cluster_labels ORDER BY label');
 			$result = $stmt->execute();
 
 			while ($row = $result->fetchArray()) {
