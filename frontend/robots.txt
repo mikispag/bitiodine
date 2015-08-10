@@ -1,0 +1,12 @@
+User-agent: ia_archiver
+Disallow: /
+
+User-agent: *
+Disallow: /cluster/
+Disallow: /a2a/
+Disallow: /a2c/
+Disallow: /c2a/
+Disallow: /c2c/
+Disallow: /predecessors/
+Disallow: /successors/
+Disallow: /api/

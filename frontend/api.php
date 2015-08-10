@@ -1,5 +1,5 @@
 <?hh
-die("Revamping the API, check back soon!");
+//die("Revamping the API, check back soon!");
 require("inc/blockchain.php");
 require("inc/bitiodine.php");
 require("inc/xhp/init.php");
@@ -33,42 +33,6 @@ $content =
                         With our <strong class="gold">API</strong> you can programmatically query <strong class="gold">BitIodine</strong>.
                     </p>
 
-                    <div class="rounded">
-
-                        <p class="white">
-                            Get details about <strong>shortest paths</strong> between <strong>two addresses</strong>.
-                        </p>
-
-                        <form>
-                            <input type="text" class="center" id="from_address" placeholder="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" value="1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE" />
-                            <button class="button" id="path_button">&rarr;&nbsp;฿&nbsp;&rarr;</button>
-                            <input type="text" class="center" id="to_address" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" value="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" />
-                            <br class="clear" />
-                        </form>
-
-                        <p class="api">
-                            <a id="path" target="_blank" href="/api/path/1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">/api/path/<span id="from">1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE</span>/<span id="to">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</span></a>
-                        </p>
-
-                        <p class="gold">
-                            Parameters
-                        </p>
-
-                        <p>
-                                <strong class="gold">show_balances</strong> — if set to <span class="gold">1</span> returns balances for each address.
-                        </p>
-
-                        <p class="gold">
-                            Example
-                        </p>
-
-                        <p>
-                                <span class="white">/api/path/1AA2MKdGEv7kQZq2KXC5HdQcVaaCS8QcGE/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?show_balances=1</span>
-                                <br />
-                                — returns a shortest path from <span class="gold">1AA...</span> to <span class="gold">1A1...</span>.
-                        </p>
-
-                    </div>
                     <div class="rounded">
 
                         <p class="white">
@@ -111,6 +75,10 @@ $content =
                                 <span class="white">/api/cluster/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?show_balances=1</span>
                                 <br />
                                 — returns a cluster for <span class="gold">1A1...</span> showing balances for each address in the cluster.
+                                <br />
+                                <span class="white">/api/cluster/31623706</span>
+                                <br />
+                                — returns all the addresses in the for <span class="gold">BitVC.com</span> cluster.
                         </p>
 
                     </div>

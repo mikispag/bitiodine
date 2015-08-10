@@ -79,7 +79,7 @@ $content =
                         <button class="button" id="cluster_button">Cluster</button>
                     </form>
 
-                    <p class="small">© - a project by <a href="https://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed ~6h. {$nodes} nodes, {$arcs} arcs in the graph.
+                    <p class="small">© - a project by <a href="https://miki.it" target="_blank">Michele Spagnuolo</a> (<a href="https://github.com/mikispag/bitiodine" target="_blank">Github</a>). Blockchain data delayed. {$nodes} nodes, {$arcs} arcs in the graph.
                     </p>
 
                 </section>
