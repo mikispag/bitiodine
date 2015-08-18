@@ -284,7 +284,7 @@ class BitIodine {
 
 		$response_array = Vector {};
 		$lines = 1;
-		$request = "A2C_$from:$to_cluster";
+		$request = "C2A_$from_cluster:$address";
 
 		if (empty($address)) {
 			write_log(true, $request, "INVALID_ADDRESS");
@@ -533,11 +533,11 @@ class BitIodine {
 		}
 
 		if ($response_array->isEmpty() || $response_array[0] == "500 Address not present in any cluster.") {
-			write_log(($cached !== false), $request, "NO_CLUSTER");
+			write_log(false, $request, "NO_CLUSTER");
 			throw new RuntimeException("The address is not part of a cluster.");
 		}
 
-		write_log(($cached !== false), $request, "OK");
+		write_log(false, $request, "OK");
 		return intval($response_array[1]);
 	}
 
