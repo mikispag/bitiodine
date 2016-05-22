@@ -2,6 +2,7 @@
 // Dump balance of all addresses ever used in the blockchain
 
 #include <util.h>
+#include <timer.h>
 #include <common.h>
 #include <errlog.h>
 #include <option.h>
@@ -11,8 +12,12 @@
 
 #include <vector>
 #include <string.h>
+#include <signal.h>
+#include <algorithm>
 
 struct Addr;
+struct AllBalances;
+AllBalances *theObject;
 static uint8_t emptyKey[kSHA256ByteSize] = { 0x52 };
 typedef GoogMap<Hash160, Addr*, Hash160Hasher, Hash160Equal>::Map AddrMap;
 typedef GoogMap<Hash160, int, Hash160Hasher, Hash160Equal>::Map RestrictMap;
@@ -27,11 +32,14 @@ struct Output {
 };
 typedef std::vector<Output> OutputVec;
 
-struct Addr
-{
+struct Addr {
+    uint8_t type;
     uint64_t sum;
+    uint64_t nbIn;
+    uint64_t nbOut;
     uint160_t hash;
-    uint32_t lastTouched;
+    uint32_t lastIn;
+    uint32_t lastOut;
     OutputVec *outputVec;
 };
 
@@ -39,22 +47,23 @@ template<> uint8_t *PagedAllocator<Addr>::pool = 0;
 template<> uint8_t *PagedAllocator<Addr>::poolEnd = 0;
 static inline Addr *allocAddr() { return (Addr*)PagedAllocator<Addr>::alloc(); }
 
-struct CompareAddr
-{
+struct CompareAddr {
     bool operator()(
         const Addr *const &a,
         const Addr *const &b
-    ) const
-    {
+    ) const {
         return (b->sum) < (a->sum);
     }
 };
 
-struct AllBalances:public Callback
-{
+struct AllBalances:public Callback {
+
+    bool csv;
+    bool isDone;
     bool detailed;
     int64_t limit;
     uint64_t offset;
+    bool interrupted;
     int64_t showAddr;
     int64_t cutoffBlock;
     optparse::OptionParser parser;
@@ -73,7 +82,7 @@ struct AllBalances:public Callback
         parser
             .usage("[options] [list of addresses to restrict output to]")
             .version("")
-            .description("dump the balance for all addresses that appear in the blockchain")
+            .description("dump the balance for all specified addresses (default: all addresses that ever appear in the blockchain)")
             .epilog("")
         ;
         parser
@@ -81,7 +90,7 @@ struct AllBalances:public Callback
             .action("store")
             .type("int")
             .set_default(-1)
-            .help("only take into account transactions in blocks strictly older than <block> (default: all)")
+            .help("only take into account transactions in blocks strictly older than <block> (default: use all transactions)")
         ;
         parser
             .add_option("-l", "--limit")
@@ -101,19 +110,55 @@ struct AllBalances:public Callback
             .add_option("-d", "--detailed")
             .action("store_true")
             .set_default(false)
-            .help("also show all non-spent outputs")
+            .help("also show all unspent outputs")
         ;
+        parser
+            .add_option("-c", "--csv")
+            .action("store_true")
+            .set_default(false)
+            .help("produce CSV-formatted output instead column-formatted")
+        ;
+
+        if(theObject) {
+            errFatal("only one allowed");
+        }
+        theObject = this;
     }
 
     virtual const char                   *name() const         { return "allBalances"; }
     virtual const optparse::OptionParser *optionParser() const { return &parser;       }
-    virtual bool                         needTXHash() const    { return true;          }
+    virtual bool                         needUpstream() const  { return true;          }
+
+    virtual bool done() {
+        if(interrupted) {
+
+            isDone = true;
+
+            info("                                                             ");
+            info("       ... interrupted ...");
+            info("");
+
+            char endTime[256];
+            gmTime(endTime, blockTime);
+            info(
+                "dumping coherent state of ledger as of block %d, minted on %s",
+                (int)(curBlock->height),
+                endTime
+            );
+        }
+        return isDone;
+    }
 
     virtual void aliases(
         std::vector<const char*> &v
     ) const
     {
         v.push_back("balances");
+    }
+
+    static void forceDone(int) {
+        theObject->interrupted = true;
+        signal(SIGINT, SIG_DFL);
     }
 
     virtual int init(
@@ -130,11 +175,16 @@ struct AllBalances:public Callback
         addrMap.resize(15 * 1000 * 1000);
         allAddrs.reserve(15 * 1000 * 1000);
 
-        optparse::Values &values = parser.parse_args(argc, argv);
-        cutoffBlock = values.get("atBlock");
-        showAddr = values.get("withAddr");
+	optparse::Values &values = parser.parse_args(argc, argv);
+
+
+        cutoffBlock = values.get("atBlock").asInt64();
+        showAddr = values.get("withAddr").asInt64();
         detailed = values.get("detailed");
-        limit = values.get("limit");
+        limit = values.get("limit").asInt64();
+        csv = values.get("csv");
+        interrupted = false;
+        isDone = false;
 
         auto args = parser.args();
         for(size_t i=1; i<args.size(); ++i) {
@@ -160,13 +210,15 @@ struct AllBalances:public Callback
                 restrictMap[h.v] = 1;
             }
         } else {
-            if(detailed) {
+            if(detailed && 50000<cutoffBlock) {
+                warning("              !!!!!!!!!!!!!!!!");
                 warning("asking for --detailed for *all* addresses in the blockchain will be *very* slow");
-                warning("as a matter, it likely won't ever finish unless you have *lots* of RAM");
+                warning("as a matter of fact, it likely won't ever finish unless you have *lots* of RAM");
+                warning("              !!!!!!!!!!!!!!!!");
             }
         }
 
-        info("analyzing blockchain ...");
+        signal(SIGINT, forceDone);
         return 0;
     }
 
@@ -182,8 +234,15 @@ struct AllBalances:public Callback
     {
         uint8_t addrType[3];
         uint160_t pubKeyHash;
-        int type = solveOutputScript(pubKeyHash.v, script, scriptSize, addrType);
-        if(unlikely(type<0)) return;
+        auto scriptType = solveOutputScript(
+            pubKeyHash.v,
+            script,
+            scriptSize,
+            addrType
+        );
+        if(unlikely(scriptType<0)) {
+            return;
+        }
 
         if(0!=restrictMap.size()) {
             auto r = restrictMap.find(pubKeyHash.v);
@@ -201,7 +260,10 @@ struct AllBalances:public Callback
             addr = allocAddr();
 
             memcpy(addr->hash.v, pubKeyHash.v, kRIPEMD160ByteSize);
+            addr->type = addrType[0];
             addr->outputVec = 0;
+            addr->nbOut = 0;
+            addr->nbIn = 0;
             addr->sum = 0;
 
             if(detailed) {
@@ -212,7 +274,13 @@ struct AllBalances:public Callback
             allAddrs.push_back(addr);
         }
 
-        addr->lastTouched = blockTime;
+        if(0<value) {
+            addr->lastIn = blockTime;
+            ++(addr->nbIn);
+        } else {
+            addr->lastOut = blockTime;
+            ++(addr->nbOut);
+        }
         addr->sum += value;
 
         if(detailed) {
@@ -281,22 +349,42 @@ struct AllBalances:public Callback
         );
     }
 
-    virtual void wrapup()
-    {
-        info("done\n");
+    virtual void wrapup() {
 
-        info("sorting by balance ...");
-
-            CompareAddr compare;
-            auto e = allAddrs.end();
-            auto s = allAddrs.begin();
+        CompareAddr compare;
+        auto e = allAddrs.end();
+        auto s = allAddrs.begin();
+        if(false==csv) {
+            info("sorting by balance ...");
             std::sort(s, e, compare);
-
-        info("done\n");
+        }
 
         uint64_t nbRestricts = (uint64_t)restrictMap.size();
-        if(0==nbRestricts) info("dumping all balances ...");
-        else               info("dumping balances for %" PRIu64 " addresses ...", nbRestricts);
+        if(0==nbRestricts) {
+            info("dumping all balances ...");
+        } else {
+            info("dumping balances for %" PRIu64 " addresses ...", nbRestricts);
+        }
+
+        if(false==csv) {
+
+            char endTime[256];
+            gmTime(endTime, blockTime);
+            printf(
+                "---------------------------------------------------------------------------\n"
+                "          State of the ledger at block %d (minted : %s)\n"
+                "---------------------------------------------------------------------------\n"
+                ,
+                (int)(curBlock->height),
+                endTime
+            );
+
+            printf(
+                "---------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+                "              Balance                      Hash160                             Base58                  nbIn        lastTimeIn          nbOut        lastTimeOut\n"
+                "---------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+            );
+        }
 
         int64_t i = 0;
         int64_t nonZeroCnt = 0;
@@ -311,38 +399,68 @@ struct AllBalances:public Callback
                 if(restrictMap.end()==r) continue;
             }
 
-            printf("%24.8f ", (1e-8)*addr->sum);
-            showHex(addr->hash.v, kRIPEMD160ByteSize, false);
-            if(0<addr->sum) ++nonZeroCnt;
-
-            if(i<showAddr || 0!=nbRestricts) {
-                uint8_t buf[64];
-                hash160ToAddr(buf, addr->hash.v);
-                printf(" %s", buf);
+            if(csv) {
+                printf("%" PRIu64 "\t", addr->sum);
             } else {
-                printf(" XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+                printf("%24.8f ", satoshisToNormaForm(addr->sum));
             }
 
-            char timeBuf[256];
-            gmTime(timeBuf, addr->lastTouched);
-            printf(" %s\n", timeBuf);
+            if(csv) {
+                printEscapedBinaryBuffer(addr->hash.v, kRIPEMD160ByteSize);
+                putchar('\t');
+            } else {
+                showHex(
+                    addr->hash.v,
+                    kRIPEMD160ByteSize,
+                    false
+                );
+            }
 
-            if(detailed) {
-                auto e = addr->outputVec->end();
-                auto s = addr->outputVec->begin();
-                while(s!=e) {
-                    printf("    %24.8f ", 1e-8*s->value);
-                    gmTime(timeBuf, s->time);
-                    showHex(s->upTXHash);
-                    printf("%4" PRIu64 " %s", s->outputIndex, timeBuf);
-                    if(s->downTXHash) {
-                        printf(" -> %4" PRIu64 " ", s->inputIndex);
+            if(0<addr->sum) {
+                ++nonZeroCnt;
+            }
+
+            if(csv) {
+                printf(
+                    "%" PRIu64 "\t%" PRIu32 "\t%" PRIu64 "\t%" PRIu32 "\n",
+                    addr->nbIn,
+                    addr->lastIn,
+                    addr->nbOut,
+                    addr->lastOut
+                );
+            } else {
+                if(i<showAddr || 0!=nbRestricts) {
+                    uint8_t buf[64];
+                    hash160ToAddr(buf, addr->hash.v, true, addr->type);
+                    printf(" %s", buf);
+                } else {
+                    printf(" XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+                }
+
+                char timeBuf[256];
+                gmTime(timeBuf, addr->lastIn);
+                printf(" %6" PRIu64 " %s ", addr->nbIn, timeBuf);
+
+                gmTime(timeBuf, addr->lastOut);
+                printf(" %6" PRIu64 " %s\n", addr->nbOut, timeBuf);
+
+                if(detailed) {
+                    auto e = addr->outputVec->end();
+                    auto s = addr->outputVec->begin();
+                    while(s!=e) {
+                        printf("    %24.8f ", satoshisToNormaForm(s->value));
+                        gmTime(timeBuf, s->time);
                         showHex(s->upTXHash);
+                        printf("%4" PRIu64 " %s", s->outputIndex, timeBuf);
+                        if(s->downTXHash) {
+                            printf(" -> %4" PRIu64 " ", s->inputIndex);
+                            showHex(s->upTXHash);
+                        }
+                        printf("\n");
+                        ++s;
                     }
                     printf("\n");
-                    ++s;
                 }
-                printf("\n");
             }
 
             ++i;
@@ -353,7 +471,6 @@ struct AllBalances:public Callback
         info("found %" PRIu64 " addresses in total", (uint64_t)allAddrs.size());
         info("shown:%" PRIu64 " addresses", (uint64_t)i);
         printf("\n");
-        exit(0);
     }
 
     virtual void start(
@@ -365,19 +482,23 @@ struct AllBalances:public Callback
         lastBlock = e;
     }
 
+    virtual void startLC() {
+        info("computing balance for all addresses");
+        info("hit ^C to interrupt and dump current, valid state of ledger");
+    }
+
     virtual void startBlock(
         const Block *b,
         uint64_t chainSize
-    )
-    {
+    ) {
         curBlock = b;
 
-        const uint8_t *p = b->data;
+        const uint8_t *p = b->chunk->getData();
         const uint8_t *sz = -4 + p;
         LOAD(uint32_t, size, sz);
         offset += size;
 
-        double now = usecs();
+        double now = Timer::usecs();
         static double startTime = 0;
         static double lastStatTime = 0;
         double elapsed = now - lastStatTime;
@@ -389,21 +510,13 @@ struct AllBalances:public Callback
                 startTime = now;
             }
 
-            double progress = offset/(double)chainSize;
-            double elasedSinceStart = 1e-6*(now - startTime);
-            double speed = progress / elasedSinceStart;
             info(
                 "%8" PRIu64 " blocks, "
                 "%8.3f MegaAddrs , "
-                "%6.2f%% , "
-                "elapsed = %5.2fs , "
-                "eta = %5.2fs , "
+                "                                            "
                 ,
                 curBlock->height,
-                addrMap.size()*1e-6,
-                100.0*progress,
-                elasedSinceStart,
-                (1.0/speed) - elasedSinceStart
+                addrMap.size()*1e-6
             );
 
             lastStatTime = now;
@@ -416,7 +529,7 @@ struct AllBalances:public Callback
         blockTime = bTime;
 
         if(0<=cutoffBlock && cutoffBlock<=curBlock->height) {
-            wrapup();
+            isDone = true;
         }
     }
 

@@ -2,6 +2,7 @@
 // Dump the transitive closure of a bunch of addresses
 
 #include <util.h>
+#include <timer.h>
 #include <common.h>
 #include <errlog.h>
 #include <option.h>
@@ -15,11 +16,22 @@
 
 typedef uint160_t Addr;
 static uint8_t gEmptyKey[kRIPEMD160ByteSize] = { 0x52 };
-typedef GoogMap<Hash160, uint64_t, Hash160Hasher, Hash160Equal >::Map AddrMap;
-typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS> Graph;
 
-struct Closure:public Callback
-{
+typedef GoogMap<
+    Hash160,
+    uint64_t,
+    Hash160Hasher,
+    Hash160Equal
+>::Map AddrMap;
+
+typedef boost::adjacency_list<
+    boost::vecS,
+    boost::vecS,
+    boost::undirectedS
+> Graph;
+
+struct Closure : public Callback {
+
     optparse::OptionParser parser;
 
     Graph graph;
@@ -29,8 +41,7 @@ struct Closure:public Callback
     std::vector<uint64_t> vertices;
     std::vector<uint160_t> rootHashes;
 
-    Closure()
-    {
+    Closure() {
         parser
             .usage("[list of addresses to seed the closure]")
             .version("")
@@ -41,12 +52,11 @@ struct Closure:public Callback
 
     virtual const char                   *name() const         { return "closure"; }
     virtual const optparse::OptionParser *optionParser() const { return &parser;   }
-    virtual bool                         needTXHash() const    { return true;      }
+    virtual bool                       needUpstream() const    { return true;      }
 
     virtual void aliases(
         std::vector<const char*> &v
-    ) const
-    {
+    ) const {
         v.push_back("cluster");
         v.push_back("wallet");
     }
@@ -54,8 +64,7 @@ struct Closure:public Callback
     virtual int init(
         int argc,
         const char *argv[]
-    )
-    {
+    ) {
         optparse::Values &values = parser.parse_args(argc, argv);
 
         auto args = parser.args();
@@ -64,8 +73,7 @@ struct Closure:public Callback
         }
 
         if(0==rootHashes.size()) {
-            const char *addr = "1dice8EMZmqKvrGE4Qc9bUFf9PX3xaYDp";
-            warning("no addresses specified, using satoshi's dice address %s", addr);
+            const char *addr = getInterestingAddr();
             loadKeyList(rootHashes, addr);
         }
 
@@ -73,8 +81,7 @@ struct Closure:public Callback
         addrMap.resize(15 * 1000 * 1000);
         allAddrs.reserve(15 * 1000 * 1000);
         info("Building address equivalence graph ...");
-        startTime = usecs();
-
+        startTime = Timer::usecs();
         return 0;
     }
 
@@ -88,8 +95,7 @@ struct Closure:public Callback
         uint64_t      inputIndex,
         const uint8_t *inputScript,
         uint64_t      inputScriptSize
-    )
-    {
+    ) {
         uint8_t addrType[3];
         uint160_t pubKeyHash;
         int type = solveOutputScript(pubKeyHash.v, outputScript, outputScriptSize, addrType);
@@ -109,23 +115,22 @@ struct Closure:public Callback
         vertices.push_back(a);
     }
 
-    virtual void wrapup()
-    {
+    virtual void wrapup() {
         size_t size = boost::num_vertices(graph);
         info(
             "done, %.2f secs, found %" PRIu64 " address(es) \n",
-            1e-6*(usecs() - startTime),
+            1e-6*(Timer::usecs() - startTime),
             size
         );
 
         info("Clustering ... ");
-        startTime = usecs();
+        startTime = Timer::usecs();
 
         std::vector<uint64_t> cc(size);
         uint64_t nbCC = boost::connected_components(graph, &cc[0]);
         info(
             "done, %.2f secs, found %" PRIu64 " clusters.\n",
-            1e-6*(usecs() - startTime),
+            1e-6*(Timer::usecs() - startTime),
             nbCC
         );
 
@@ -166,15 +171,13 @@ struct Closure:public Callback
     virtual void startTX(
         const uint8_t *p,
         const uint8_t *
-    )
-    {
+    ) {
         vertices.resize(0);
     }
 
     virtual void endTX(
         const uint8_t *p
-    )
-    {
+    ) {
         size_t size = vertices.size();
         if(likely(1<size)) {
             for(size_t i=1; unlikely(i<size); ++i) {

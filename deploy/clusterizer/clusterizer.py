@@ -152,7 +152,7 @@ if options.load or options.csv:
 	with open("clusters_histogram.csv", "w") as f:
 		writer = csv.writer(f)
 		writer.writerow(['size', 'count'])
-		for i in range(0, len(hist)):
+		for i in range(len(hist)):
 			writer.writerow([int(bin_edges[i]), hist[i]])
 
 if options.print_cluster is not None:
@@ -174,4 +174,3 @@ if options.print_address is not None:
 		die(e)
 
 	print(users[options.print_address])
-

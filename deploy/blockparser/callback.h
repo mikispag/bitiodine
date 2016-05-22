@@ -13,6 +13,7 @@
         Callback();
         typedef optparse::OptionParser Parser;
         static void showAllHelps(bool longHelp);
+        static void showHelpFor(const char*, bool longHelp);
         static Callback *find(const char *name, bool printList=false);
 
         // Naming, option parsing, construction, etc ...
@@ -20,16 +21,18 @@
         virtual const Parser *optionParser(                            ) const = 0;              // Option parser object for callback
         virtual void               aliases(std::vector<const char *> &v) const {               } // Alternate names for callback
         virtual int                   init(int argc, const char *argv[])       { return 0;     } // Called after callback construction, with command line arguments
-        virtual bool            needTXHash(                            ) const { return false; } // Overload if you need parser to compute TX hashes
+        virtual bool          needUpstream(                            ) const { return false; } // Overload if you need parser to provide upstream to each input (slower + memory hungry)
 
         // Callback for first, shallow parse -- all blocks are seen, including orphaned ones but aren't parsed
-        virtual void     startMap(const uint8_t *p                     )       {               }  // Called when a blockchain file is mapped into memory
-        virtual void       endMap(const uint8_t *p                     )       {               }  // Called when a blockchain file is unmapped from memory
-        virtual void   startBlock(const uint8_t *p                     )       {               }  // Called when a block is encountered during first pass
-        virtual void     endBlock(const uint8_t *p                     )       {               }  // Called when an end of block is encountered during first pass
+        virtual void startBlockFile(const uint8_t *p                   )       {               }  // Called when a blockchain file is mapped into memory
+        virtual void   endBlockFile(const uint8_t *p                   )       {               }  // Called when a blockchain file is unmapped from memory
+        virtual void     startBlock(const uint8_t *p                   )       {               }  // Called when a block is encountered during first pass
+        virtual void       endBlock(const uint8_t *p                   )       {               }  // Called when an end of block is encountered during first pass
 
         // Callback for second, deep parse -- only valid blocks are seen, and are parsed in details
         virtual void        start(  const Block *s, const Block *e     )       {               }  // Called when the second parse of the full chain starts
+        virtual void     startTXs(const uint8_t *p                     )       {               }  // Called when start list of TX is encountered
+        virtual void       endTXs(const uint8_t *p                     )       {               }  // Called when end list of TX is encountered
         virtual void      startTX(const uint8_t *p, const uint8_t *hash)       {               }  // Called when a new TX is encountered
         virtual void        endTX(const uint8_t *p                     )       {               }  // Called when an end of TX is encountered
         virtual void  startInputs(const uint8_t *p                     )       {               }  // Called when the start of a TX's input array is encountered
@@ -41,7 +44,9 @@
         virtual void  startOutput(const uint8_t *p                     )       {               }  // Called when a TX output is encountered
         virtual void   startBlock(  const Block *b, uint64_t chainSize )       {               }  // Called when a new block is encountered
         virtual void     endBlock(  const Block *b                     )       {               }  // Called when an end of block is encountered
+        virtual void      startLC(                                     )       {               }  // Called when longest chain parse starts
         virtual void       wrapup(                                     )       {               }  // Called when the whole chain has been parsed
+        virtual bool         done(                                     )       { return false; }  // Called after each TX to check if callback is done
 
         // Called when an output has been fully parsed
         virtual void endOutput(
@@ -51,8 +56,7 @@
             uint64_t      outputIndex,          // Index of this output in the current transaction
             const uint8_t *outputScript,        // Raw script (challenge to would-be spender) carried by this output
             uint64_t      outputScriptSize      // Byte size of raw script
-        )
-        {
+        ) {
         }
 
         // Called exactly like startInput, but with a much richer context
@@ -66,8 +70,7 @@
             uint64_t      inputIndex,           // Index of input in downstream transaction
             const uint8_t *inputScript,         // Raw script (answer to challenge) carried by input in downstream transaction
             uint64_t      inputScriptSize       // Byte size of script carried by input in downstream transaction
-        )
-        {
+        ) {
         }
     };
 

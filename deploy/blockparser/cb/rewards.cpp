@@ -8,8 +8,8 @@
 #include <string.h>
 #include <callback.h>
 
-struct Rewards:public Callback
-{
+struct Rewards : public Callback {
+
     optparse::OptionParser parser;
 
     bool fullDump;
@@ -19,8 +19,7 @@ struct Rewards:public Callback
     uint64_t currBlock;
     const uint8_t *currTXHash;
 
-    Rewards()
-    {
+    Rewards() {
         parser
             .usage("")
             .version("")
@@ -37,13 +36,12 @@ struct Rewards:public Callback
 
     virtual const char                   *name() const         { return "rewards"; }
     virtual const optparse::OptionParser *optionParser() const { return &parser;   }
-    virtual bool                         needTXHash() const    { return true;      }
+    virtual bool                       needUpstream() const    { return true;      }
 
     virtual int init(
         int argc,
         const char *argv[]
-    )
-    {
+    ) {
         optparse::Values &values = parser.parse_args(argc, argv);
         fullDump = values.get("full");
 
@@ -54,9 +52,8 @@ struct Rewards:public Callback
     virtual void startBlock(
         const Block *b,
         uint64_t
-    )
-    {
-        const uint8_t *p = b->data;
+    ) {
+        const uint8_t *p = b->chunk->getData();
         SKIP(uint32_t, version, p);
         SKIP(uint256_t, prevBlkHash, p);
         SKIP(uint256_t, blkMerkleRoot, p);
@@ -68,29 +65,35 @@ struct Rewards:public Callback
     virtual void startTX(
         const uint8_t *p,
         const uint8_t *hash
-    )
-    {
+    ) {
         currTXHash = hash;
     }
 
-    virtual void  startInputs(const uint8_t *p)
-    {
+    virtual void startInputs(
+        const uint8_t *p
+    ) {
         hasGenInput = false;
         nbInputs = 0;
     }
 
-    virtual void   startInput(const uint8_t *p)
-    {
+    virtual void startInput(
+        const uint8_t *p
+    ) {
         static uint256_t gNullHash;
         bool isGenInput = (0==memcmp(gNullHash.v, p, sizeof(gNullHash)));
-        if(isGenInput) hasGenInput = true;
+        if(isGenInput) {
+            hasGenInput = true;
+        }
         ++nbInputs;
     }
 
-    virtual void  endInputs(const uint8_t *p)
-    {
+    virtual void endInputs(
+        const uint8_t *p
+    ) {
         if(hasGenInput) {
-            if(1!=nbInputs) abort();
+            if(1!=nbInputs) {
+                abort();
+            }
         }
     }
 
@@ -101,9 +104,10 @@ struct Rewards:public Callback
         uint64_t      outputIndex,
         const uint8_t *outputScript,
         uint64_t      outputScriptSize
-    )
-    {
-        if(!hasGenInput) return;
+    ) {
+        if(!hasGenInput) {
+            return;
+        }
 
         uint8_t addrType[3];
         uint160_t pubKeyHash;
@@ -113,13 +117,15 @@ struct Rewards:public Callback
             outputScriptSize,
             addrType
         );
-        if(unlikely(-2==type)) return;
+        if(unlikely(-2==type)) {
+            return;
+        }
 
         if(unlikely(type<0) && 0!=value && fullDump) {
             printf("============================\n");
             printf("BLOCK %d ... RAW ASCII DUMP OF FAILING SCRIPT = ", (int)currBlock);
             fwrite(outputScript, outputScriptSize, 1, stdout);
-            printf("value = %16.8f\n", value*1e-8);
+            printf("value = %16.8f\n", satoshisToNormaForm(value));
             showScript(outputScript, outputScriptSize);
             printf("============================\n\n");
             printf("\n");
@@ -127,12 +133,14 @@ struct Rewards:public Callback
         }
 
         reward += value;
-        if(!fullDump) return;
+        if(!fullDump) {
+            return;
+        }
 
         printf("%7d ", (int)currBlock);
         showHex(currTXHash);
 
-        printf(" %16.8f ", 1e-8*value);
+        printf(" %16.8f ", satoshisToNormaForm(value));
 
         if(type<0) {
             printf("######################################## ##################################\n");
@@ -170,16 +178,15 @@ struct Rewards:public Callback
 
     virtual void endBlock(
         const Block *b
-    )
-    {
+    ) {
         uint64_t baseReward = getBaseReward(currBlock);
         int64_t feesEarned = reward - (int64_t)baseReward;   // This sometimes goes <0 for some early, buggy blocks
         printf(
             "Summary for block %7d : baseReward=%16.8f fees=%16.8f total=%16.8f\n",
             (int)currBlock,
-            1e-8*baseReward,
-            1e-8*feesEarned,
-            1e-8*reward
+            satoshisToNormaForm(baseReward),
+            satoshisToNormaForm(feesEarned),
+            satoshisToNormaForm(reward)
         );
     }
 };

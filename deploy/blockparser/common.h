@@ -19,5 +19,18 @@
         #define ALWAYS_INLINE
     #endif
 
+    #if defined(__CYGWIN__)
+        #define lseek64 lseek
+        #define NO_GOOGLE_MAP 1
+    #endif
+
+    #if defined(_WIN64)
+        #include <time.h>
+        #define NO_GOOGLE_MAP 1
+        #define strncasecmp _strnicmp
+        #define gmtime_r(x, y) gmtime_s(y, x)
+        #define asctime_r(x, y) asctime_s(y, 1024, x)
+    #endif
+
 #endif // __COMMON_H__
 

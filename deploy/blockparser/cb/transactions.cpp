@@ -45,7 +45,7 @@ struct Transactions:public Callback
 
     virtual const char                   *name() const         { return "transactions"; }
     virtual const optparse::OptionParser *optionParser() const { return &parser;        }
-    virtual bool                         needTXHash() const    { return true;           }
+    virtual bool                       needUpstream() const    { return true;           }
 
     virtual void aliases(
         std::vector<const char*> &v
@@ -75,13 +75,7 @@ struct Transactions:public Callback
         }
 
         if(0==rootHashes.size()) {
-            #if defined(LITECOIN)
-                const char *addr = "LKvTVnkK2rAkJXfgPdkaDRgvEGvazxWS9o";
-                warning("no addresses specified, using popular address %s", addr);
-            #else
-                const char *addr = "1dice8EMZmqKvrGE4Qc9bUFf9PX3xaYDp";
-                warning("no addresses specified, using satoshi's dice address %s", addr);
-            #endif
+            const char *addr = getInterestingAddr();
             loadKeyList(rootHashes, addr);
         }
 
@@ -106,8 +100,18 @@ struct Transactions:public Callback
     {
         uint8_t addrType[3];
         uint160_t pubKeyHash;
-        int type = solveOutputScript(pubKeyHash.v, script, scriptSize, addrType);
-        if(unlikely(type<0)) return;
+        auto scriptType = solveOutputScript(
+            pubKeyHash.v,
+            script,
+            scriptSize,
+            addrType
+        );
+        if(unlikely(scriptType<0)) {
+            return;
+        }
+
+        uint8_t addrBuf[64];
+        hash160ToAddr(addrBuf, pubKeyHash.v, true, addrType[0]);
 
         bool match = (addrMap.end() != addrMap.find(pubKeyHash.v));
         if(unlikely(match)) {
@@ -121,8 +125,8 @@ struct Transactions:public Callback
                 showHex(downTXHash ? downTXHash : txHash);
                 printf(
                     "\",%17.08f,%17.08f\n",
-                    (add ? 1e-8 : -1e-8)*value,
-                    newSum*1e-8
+                    (add ? 1.0 : -1.0)*satoshisToNormaForm(value),
+                    satoshisToNormaForm(newSum)
                 );
             } else {
 
@@ -138,16 +142,17 @@ struct Transactions:public Callback
 
                 printf("    %s    ", timeBuf);
                 showHex(pubKeyHash.v, kRIPEMD160ByteSize, false);
+                printf(" (%s)", addrBuf);
 
                 printf("    ");
                 showHex(downTXHash ? downTXHash : txHash);
 
                 printf(
                     " %24.08f %c %24.08f = %24.08f\n",
-                    sum*1e-8,
+                    satoshisToNormaForm(sum),
                     add ? '+' : '-',
-                    value*1e-8,
-                    newSum*1e-8
+                    satoshisToNormaForm(value),
+                    satoshisToNormaForm(newSum)
                 );
             }
 
@@ -202,7 +207,7 @@ struct Transactions:public Callback
         uint64_t
     )
     {
-        const uint8_t *p = b->data;
+        const uint8_t *p = b->chunk->getData();
         SKIP(uint32_t, version, p);
         SKIP(uint256_t, prevBlkHash, p);
         SKIP(uint256_t, blkMerkleRoot, p);
@@ -219,7 +224,7 @@ struct Transactions:public Callback
             printf(
                 "\"Time\","
                 " \"Address\","
-                "                                  \"TXId\","
+                "                                    \"TXId\","
                 "                                                                   \"TXAmount\","
                 "     \"NewBalance\""
                 "\n"
@@ -227,8 +232,8 @@ struct Transactions:public Callback
         }
         else {
             info("Dumping all transactions for %d address(es)\n", (int)addrMap.size());
-            printf("    Time (GMT)                  Address                                     Transaction                                                                    OldBalance                     Amount                 NewBalance\n");
-            printf("    =======================================================================================================================================================================================================================\n");
+            printf("    Time (GMT)                  Address                                                                          Transaction                                                                    OldBalance                     Amount                 NewBalance\n");
+            printf("    ============================================================================================================================================================================================================================================================\n");
         }
     }
 
@@ -236,7 +241,7 @@ struct Transactions:public Callback
     {
         if(false==csv) {
             printf(
-                "    =======================================================================================================================================================================================================================\n"
+                "    ============================================================================================================================================================================================================================================================\n"
             );
 
             info(
@@ -247,9 +252,9 @@ struct Transactions:public Callback
                 "    balance       = %17.08f\n"
                 "\n",
                 nbTX,
-                adds*1e-8,
-                subs*1e-8,
-                sum*1e-8
+                satoshisToNormaForm(adds),
+                satoshisToNormaForm(subs),
+                satoshisToNormaForm(sum)
             );
         }
     }

@@ -100,6 +100,12 @@ class Value {
     operator float() { float t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
     operator double() { double t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
     operator long double() { long double t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
+
+    int32_t asInt32() { int32_t t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
+    int64_t asInt64() { int64_t t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
+    uint32_t asUInt32() { uint32_t t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
+    uint64_t asUInt64() { uint64_t t; return (valid && (std::istringstream(str) >> t)) ? t : 0; }
+
  private:
     const std::string str;
     bool valid;
@@ -141,6 +147,8 @@ class OptionParser {
     OptionParser& set_defaults(const std::string& dest, const std::string& val) {
       _defaults[dest] = val; return *this;
     }
+    template<typename T>
+    OptionParser& set_defaults(const std::string& dest, T t) { std::ostringstream ss; ss << t; _defaults[dest] = ss.str(); return *this; }
     OptionParser& enable_interspersed_args() { _interspersed_args = true; return *this; }
     OptionParser& disable_interspersed_args() { _interspersed_args = false; return *this; }
     OptionParser& add_option_group(const OptionGroup& group);
@@ -171,7 +179,7 @@ class OptionParser {
       return std::vector<std::string>(_leftover.begin(), _leftover.end());
     }
 
-    std::string format_help(unsigned int indent = 4) const;
+    std::string format_help() const;
     std::string format_option_help(unsigned int indent = 2) const;
     void print_help() const;
 
