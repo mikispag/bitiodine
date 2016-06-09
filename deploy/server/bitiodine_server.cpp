@@ -40,6 +40,7 @@ struct ADDRESS {
   string             address;
   unordered_set<TX *>txs_in;
   unordered_set<TX *>txs_out;
+  unsigned int       cluster;
 };
 
 bool                 bitcoin_address_quick_valid(string address);
@@ -63,17 +64,16 @@ int                  server_start_listen();
 void                 server_thread(int rfd);
 
 // Server constants
-const char *PORT    = "8888"; // port numbers 1-1024 are probably reserved by
-                              // your OS
-const int   MAXLEN  = 1024;   // Max length of a message.
-const int   MAXFD   = 128;    // Maximum file descriptors to use. Equals maximum
-                              // clients.
-const int   BACKLOG = 256;    // Number of connections that can wait in queue
-                              // before they be accept()'ed
+const char *PORT = "8888"; // port numbers 1-1024 are probably reserved by
+                           // your OS
+const int MAXLEN = 1024;   // Max length of a message.
+const int MAXFD  = 128;    // Maximum file descriptors to use. Equals maximum
+                           // clients.
+const int BACKLOG = 256;   // Number of connections that can wait in queue
+                           // before they be accept()'ed
 
 unordered_map<string, ADDRESS *>  addresses;
 unordered_map<unsigned int, TX *> transactions;
-unordered_map<ADDRESS *, unsigned int> clusters;
 
 vector<string>tokenize(string const& input)
 {
@@ -187,6 +187,7 @@ int main()
         if (addresses.find(address) == addresses.end()) {
           address_struct          = new ADDRESS();
           address_struct->address = address;
+          address_struct->cluster = 0;
           addresses[address]      = address_struct;
         } else {
           address_struct = addresses[address];
@@ -200,7 +201,7 @@ int main()
           unsigned int timestamp = (unsigned int)sqlite3_column_int64(
             details_stmt,
             0);
-          string tx_hash         =
+          string tx_hash =
             string(reinterpret_cast<const char *>(sqlite3_column_text(details_stmt,
                                                                       1)));
 
@@ -217,6 +218,7 @@ int main()
           if (addresses.find(out_address) == addresses.end()) {
             out_address_struct          = new ADDRESS();
             out_address_struct->address = out_address;
+            out_address_struct->cluster = 0;
             addresses[out_address]      = out_address_struct;
           } else {
             out_address_struct = addresses[out_address];
@@ -250,7 +252,7 @@ int main()
 
   while (in.read_row(address, cluster)) {
     try {
-      clusters[addresses.at(address)] = cluster;
+      addresses.at(address)->cluster = cluster;
     } catch (std::out_of_range& e) {
       // Do nothing.
     }
@@ -273,13 +275,12 @@ int main()
 void print_cluster_id(int client, string address)
 {
   try {
-    auto got = clusters.find(addresses.at(address));
+    unsigned int cluster = addresses.at(address)->cluster;
 
-    if (got == clusters.end()) {
+    if (cluster == 0) {
       server_send(client, "500 Address not present in any cluster.\n");
       return;
     } else {
-      unsigned int cluster = got->second;
       server_send(client, "BEGIN\n");
       server_send(client, to_string(cluster));
       server_send(client, "\nEND\n");
@@ -326,9 +327,9 @@ void print_cluster(int client, unsigned int cluster)
 {
   server_send(client, "BEGIN\n");
 
-  for (auto& it : clusters) {
-    if (it.second == cluster) {
-      server_send(client, it.first->address + "\n");
+  for (auto& it : addresses) {
+    if (it.second->cluster == cluster) {
+      server_send(client, it.second->address + "\n");
     }
   }
 
@@ -407,14 +408,14 @@ unordered_set<string>a2a(string from, string to)
 
 unordered_set<string>a2c(string from, unsigned int cluster)
 {
-  unordered_set<string> tx_hashes;
+  unordered_set<string>    tx_hashes;
   unordered_set<ADDRESS *> target_addresses;
 
   auto source_address = new ADDRESS();
 
-  for (auto& it : clusters) {
-    if (it.second == cluster) {
-      target_addresses.insert(it.first);
+  for (auto& it : addresses) {
+    if (it.second->cluster == cluster) {
+      target_addresses.insert(it.second);
     }
   }
 
@@ -439,14 +440,14 @@ unordered_set<string>a2c(string from, unsigned int cluster)
 
 unordered_set<string>c2a(unsigned int cluster, string to)
 {
-  unordered_set<string> tx_hashes;
+  unordered_set<string>    tx_hashes;
   unordered_set<ADDRESS *> source_addresses;
 
   auto dest_address = new ADDRESS();
 
-  for (auto& it : clusters) {
-    if (it.second == cluster) {
-      source_addresses.insert(it.first);
+  for (auto& it : addresses) {
+    if (it.second->cluster == cluster) {
+      source_addresses.insert(it.second);
     }
   }
 
@@ -477,17 +478,17 @@ unordered_set<string>c2a(unsigned int cluster, string to)
 
 unordered_set<string>c2c(unsigned int cluster_from, unsigned int cluster_to)
 {
-  unordered_set<string> tx_hashes;
+  unordered_set<string>    tx_hashes;
   unordered_set<ADDRESS *> source_addresses;
   unordered_set<ADDRESS *> target_addresses;
 
-  for (auto& it : clusters) {
-    if (it.second == cluster_from) {
-      source_addresses.insert(it.first);
+  for (auto& it : addresses) {
+    if (it.second->cluster == cluster_from) {
+      source_addresses.insert(it.second);
     }
 
-    if (it.second == cluster_to) {
-      target_addresses.insert(it.first);
+    if (it.second->cluster == cluster_to) {
+      target_addresses.insert(it.second);
     }
   }
 
@@ -626,7 +627,6 @@ void do_command(char *command_c, int client)
     server_send(client, "404 COMMAND NOT FOUND\n");
     return;
   }
-
   if (tokens[0] == "SHORTEST_PATH_A2A") {
     if ((tokens.size() < 3) || !bitcoin_address_quick_valid(tokens[1]) ||
         !bitcoin_address_quick_valid(tokens[2])) {
@@ -825,16 +825,13 @@ void do_command(char *command_c, int client)
     }
 
     try {
-      auto got = clusters.find(addresses.at(tokens[1]));
+      unsigned int cluster = addresses.at(tokens[1])->cluster;
 
-      if (got == clusters.end()) {
+      if (cluster == 0) {
         server_send(client, "500 Address not present in any cluster.\n");
-        return;
       } else {
-        cluster = got->second;
+        print_cluster(client, cluster);
       }
-
-      print_cluster(client, cluster);
     } catch (std::out_of_range& e) {
       server_send(client, "500 Address not present in database.\n");
     }
