@@ -5,17 +5,21 @@ class SQLiteWrapper:
 		self.conn = sqlite3.connect(db)
 		self.cursor = self.conn.cursor()
 		self.cursor.execute("PRAGMA cache_size=-16000")
+		self.cursor.execute("PRAGMA synchronous=OFF")
 		self.conn.commit()
 
-	def query(self, sql, params=None, iterator=False, fetch_one=False, multi=False):
+	def query(self, sql, params=None, iterator=False, fetch_one=False, multi=False, many_rows=None):
 		try:
 			with self.conn as conn:
 				cursor = conn.cursor()
+				if many_rows:
+					cursor.executemany(sql, many_rows)
+					return
 				if multi:
 					cursor.executescript(sql)
 				if params is None and not multi:
 					cursor.execute(sql)
-				if params is not None and not multi:
+				if params and not multi:
 					cursor.execute(sql, params)
 				if iterator:
 					return cursor

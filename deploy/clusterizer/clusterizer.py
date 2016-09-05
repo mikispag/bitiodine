@@ -126,20 +126,30 @@ if options.load or options.csv or options.sqlite:
         die(e)
 
     if options.csv:
-        with open("clusters.csv.new", "w") as f:
+        with open(FILENAME + ".csv.new", "w") as f:
             writer = csv.writer(f)
             writer.writerow(["address", "cluster"])
             for address, cluster in users.items():
                 writer.writerow([address, cluster])
-        os.rename("clusters.csv.new", "clusters.csv")
+        os.rename(FILENAME + ".csv.new", FILENAME + ".csv")
         sys.exit(0)
 
     if options.sqlite:
-        cluster_db = SQLiteWrapper(FILENAME + '.sqlite')
+        cluster_db = SQLiteWrapper(FILENAME + ".sqlite.new")
         try:
             cluster_db.query(clusters_schema)
+			clusters = 0
+			rows = []
             for address, cluster in users.items():
-                cluster_db.query(add_cluster_query, (cluster, address))
+				rows.append((cluster, address))
+				clusters += 1
+				if clusters == 10000:
+					print("Updated 10,000 records.", file=sys.stderr)
+                	cluster_db.query(add_cluster_query, many_rows=rows)
+					rows = []
+					clusters = 0
+			cluster_db.query(add_cluster_query, many_rows=rows)
+			os.rename(FILENAME + ".sqlite.new", ".sqlite")
         except Exception as e:
             die(e)
         sys.exit(0)
