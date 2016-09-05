@@ -38,17 +38,17 @@ used_so_far_query = "SELECT EXISTS(SELECT * FROM txout TOUT JOIN txin TI ON TOUT
 
 # Return the amount of transactions that is associate with those block times within a interval of time.
 number_of_transactions_between_time_interval = """
-						SELECT count(*) 
-							FROM tx LEFT JOIN blocks 
-							ON (tx.block_id = blocks.block_id) 
+						SELECT count(*)
+							FROM tx LEFT JOIN blocks
+							ON (tx.block_id = blocks.block_id)
 						WHERE blocks.time >= ? AND blocks.time <= ?
 """
 
 # Return the minimum and maximum transaction ids associate wih blocks inside a given time interval.
 max_min_transaction_ids_time_interval = """
-					SELECT MIN(tx.tx_id), MAX(tx.tx_id) 
-						FROM tx LEFT JOIN blocks 
-						ON (tx.block_id = blocks.block_id) 
+					SELECT MIN(tx.tx_id), MAX(tx.tx_id)
+						FROM tx LEFT JOIN blocks
+						ON (tx.block_id = blocks.block_id)
 					WHERE blocks.time >= ? AND blocks.time <= ?
 """
 
@@ -94,8 +94,21 @@ label TEXT NOT NULL)
 get_cluster_label_query = "SELECT label FROM cluster_labels WHERE cluster_id = ?"
 
 add_cluster_label_query = """
-INSERT OR REPLACE INTO 
-cluster_labels 
+INSERT OR REPLACE INTO
+cluster_labels
 VALUES (?, ?)
 """
 
+clusters_schema = """
+CREATE TABLE IF NOT EXISTS clusters(
+cluster_id INT NOT NULL,
+address TEXT NOT NULL PRIMARY KEY)
+"""
+
+get_cluster_id_query = "SELECT cluster_id FROM clusters WHERE address = ?"
+
+add_cluster_query = """
+INSERT OR REPLACE INTO
+clusters
+VALUES (?, ?)
+"""

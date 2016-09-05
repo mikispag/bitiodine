@@ -34,6 +34,7 @@ parser.add_argument("--print-address", dest="print_address", default=None,
 	help="Display the cluster ID to which an address belongs")
 parser.add_argument("--csv", action="store_true", dest="csv", default=False,
 	help="Export clusters to a clusters.csv file")
+parser.add_argument("--sqlite", action="store_true", dest="sqlite", default=False, help="Export clusters to a clusters.sqlite SQLite database")
 options = parser.parse_args()
 
 db = SQLiteWrapper(options.db)
@@ -112,7 +113,7 @@ if options.generate:
 
 	users = save(users, FILENAME, max_txid_res)
 
-if options.load or options.csv:
+if options.load or options.csv or options.sqlite:
 	try:
 		users, _ = load(FILENAME)
 		print("Clusters loaded - %d clusters, %d addresses in clusters." % (len(set(users.values())), len(users)))
@@ -126,6 +127,16 @@ if options.load or options.csv:
 			for address, cluster in users.items():
 				writer.writerow([address, cluster])
 		os.rename("clusters.csv.new", "clusters.csv");
+		sys.exit(0)
+
+	if options.sqlite:
+		cluster_db = SQLiteWrapper(FILENAME + '.sqlite')
+		try:
+			cluster_db.query(clusters_schema)
+			for address, cluster in users.items():
+				cluster_db.query(add_cluster_query, (cluster, address))
+	    except Exception as e:
+	      die(e)
 		sys.exit(0)
 
 	counter = Counter(users.values())

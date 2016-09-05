@@ -4,7 +4,7 @@ class SQLiteWrapper:
 	def __init__(self, db):
 		self.conn = sqlite3.connect(db)
 		self.cursor = self.conn.cursor()
-		self.cursor.execute("PRAGMA cache_size=4000")
+		self.cursor.execute("PRAGMA cache_size=-16000")
 		self.conn.commit()
 
 	def query(self, sql, params=None, iterator=False, fetch_one=False, multi=False):
