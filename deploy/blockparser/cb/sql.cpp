@@ -58,7 +58,7 @@ struct SQLDump : public Callback {
 
   SQLDump() {
     parser
-    .usage("[options] [list of addresses to restrict output to]")
+    .usage("[options]")
     .version("")
     .description("create an SQL dump of the blockchain")
     .epilog("")
@@ -94,7 +94,7 @@ struct SQLDump : public Callback {
     int         argc,
     const char *argv[]
     ) {
-    txID     = -1;
+    txID     = 0;
     blkID    = 0;
     inputID  = 0;
     outputID = 0;
@@ -142,25 +142,23 @@ struct SQLDump : public Callback {
 
     FILE *sqlFile = fopen("blockchain.sql", "w");
 
-    if (!sqlFile) sysErrFatal("couldn't open file blockChain.sql for writing\n");
+    if (!sqlFile) sysErrFatal("couldn't open file blockchain.sql for writing\n");
 
     fprintf(
       sqlFile,
       "PRAGMA journal_mode=MEMORY;\n"
-      "PRAGMA synchronous=0;\n"
+      "PRAGMA synchronous=NORMAL;\n"
       "CREATE TABLE IF NOT EXISTS blocks(\n"
       "    block_id BIGINT NOT NULL PRIMARY KEY,\n"
       "    block_hash TEXT NOT NULL,\n"
       "    time BIGINT NOT NULL\n"
       ");\n"
-      "\n"
       "CREATE TABLE IF NOT EXISTS tx(\n"
       "    tx_id BIGINT NOT NULL PRIMARY KEY,\n"
       "    tx_hash TEXT NOT NULL,\n"
       "    block_id BIGINT NOT NULL,\n"
       "    FOREIGN KEY (block_id) REFERENCES blocks (block_id)\n"
       ");\n"
-      "\n"
       "CREATE TABLE IF NOT EXISTS txout(\n"
       "    txout_id BIGINT NOT NULL PRIMARY KEY,\n"
       "    address CHAR(40),\n"
@@ -169,7 +167,6 @@ struct SQLDump : public Callback {
       "    txout_pos INT NOT NULL,\n"
       "    FOREIGN KEY (tx_id) REFERENCES tx (tx_id)\n"
       ");\n"
-      "\n"
       "CREATE TABLE IF NOT EXISTS txin(\n"
       "    txin_id BIGINT NOT NULL PRIMARY KEY,\n"
       "    txout_id BIGINT NOT NULL,\n"
@@ -194,17 +191,11 @@ struct SQLDump : public Callback {
 
     fprintf(
       bashFile,
-      "\n"
-      "#!/bin/bash\n"
-      "\n"
       "echo 'Recreating DB blockchain...'\n"
       "mkdir ../blockchain\n"
       "sqlite3 ../blockchain/blockchain.sqlite < blockchain.sql\n"
       "rm -f blockchain.sql\n"
       "echo done.\n"
-      "echo\n"
-      "rm -f blockchain.sql\n"
-      "\n"
       "for i in blocks txin txout tx\n"
       "do\n"
       "    echo \"Importing table ${i}...\"\n"
@@ -264,15 +255,14 @@ struct SQLDump : public Callback {
     const uint8_t *hash
     ) {
     if (blkID >= firstBlock) {
-      fprintf(txFile, "%" PRIu64 "|", ++txID);
+      fprintf(txFile, "%" PRIu64 "|", txID);
 
       writeHexEscapedBinaryBuffer(txFile, hash, kSHA256ByteSize);
       fputc('|', txFile);
 
       fprintf(txFile, "%" PRIu64 "\n", blkID);
-    } else {
-      txID++;
     }
+    txID++;
   }
 
   virtual void endOutput(
@@ -357,7 +347,7 @@ struct SQLDump : public Callback {
     auto src = outputMap.find(h.v);
 
     if (outputMap.end() == src) {
-      errFatal("unconnected input");
+      errFatal("Unconnected input.");
     }
 
     if (blkID >= firstBlock) {
@@ -383,8 +373,8 @@ struct SQLDump : public Callback {
     fclose(inputFile);
     fclose(blockFile);
     fclose(txFile);
-    system("/bin/sh ./blockchain.sh");
-    info("Done.\n");
+    system("/bin/bash ./blockchain.sh");
+    info("Done.");
     exit(0);
   }
 };
