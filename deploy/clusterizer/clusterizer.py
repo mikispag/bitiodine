@@ -150,7 +150,7 @@ if options.load or options.csv or options.sqlite:
 					clusters = 0
 			cluster_db.query(add_cluster_query, many_rows=rows)
 			cluster_db.close()
-			os.rename(FILENAME + ".sqlite.new", ".sqlite")
+			os.rename(FILENAME + ".sqlite.new", FILENAME + ".sqlite")
         except Exception as e:
             die(e)
         sys.exit(0)
