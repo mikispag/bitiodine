@@ -4,7 +4,7 @@ class SQLiteWrapper:
 	def __init__(self, db):
 		self.conn = sqlite3.connect(db)
 		self.cursor = self.conn.cursor()
-		self.cursor.execute("PRAGMA page_size=4096")
+		self.cursor.execute("PRAGMA journal_mode=MEMORY")
 		self.cursor.execute("PRAGMA cache_size=-16000")
 		self.cursor.execute("PRAGMA synchronous=NORMAL")
 		self.conn.commit()
