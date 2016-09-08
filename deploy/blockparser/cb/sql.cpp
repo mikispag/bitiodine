@@ -104,7 +104,13 @@ struct SQLDump : public Callback {
     outputMap.resize(sz);
 
     optparse::Values& values = parser.parse_args(argc, argv);
-    lastBlock = values.get("atBlock").asUInt64();
+
+    if (values.is_set_by_user("atBlock")) {
+      lastBlock = values.get("atBlock").asUInt64();
+      info("Last block: %" PRIu64 ".\n", lastBlock);
+    } else {
+      lastBlock = 0;
+    }
 
     if (!file_exists("../blockchain/blockchain.sqlite"))
     {
@@ -216,7 +222,7 @@ struct SQLDump : public Callback {
     const Block *b,
     uint64_t
     ) {
-    if (lastBlock < b->height) {
+    if (lastBlock > 0 && lastBlock < static_cast<uint64_t>(b->height)) {
       wrapup();
     }
 
