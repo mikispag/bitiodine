@@ -214,10 +214,10 @@ struct SQLDump : public Callback {
       "    echo done.\n"
       "    rm -f $i.txt\n"
       "    echo\n"
+      "done\n"
       "echo '(Re)creating indexes...'\n"
       "sqlite3 ../blockchain/blockchain.sqlite < blockchain_indexes.sql\n"
       "rm -f blockchain_indexes.sql\n"
-      "done\n"
       "rm -f blockchain.sh\n"
       );
     fclose(bashFile);
