@@ -150,6 +150,10 @@ struct SQLDump : public Callback {
 
     if (!sqlFile) sysErrFatal("couldn't open file blockchain.sql for writing\n");
 
+    FILE *indexesSqlFile = fopen("blockchain_indexes.sql", "w");
+
+    if (!indexesSqlFile) sysErrFatal("couldn't open file blockchain_indexes.sql for writing\n");
+
     fprintf(
       sqlFile,
       "PRAGMA journal_mode=MEMORY;\n"
@@ -180,18 +184,21 @@ struct SQLDump : public Callback {
       "    txin_pos INT NOT NULL,\n"
       "    FOREIGN KEY (tx_id) REFERENCES tx (tx_id)\n"
       ");\n"
+      "CREATE VIEW IF NOT EXISTS tx_full AS SELECT blocks.time, tx.tx_hash, tx.tx_id, txout.address, txout.txout_value FROM txout LEFT JOIN tx ON (tx.tx_id = txout.tx_id) LEFT JOIN blocks ON (tx.block_id = blocks.block_id);\n"
+      );
+    fclose(sqlFile);
+
+    fprintf(
+      indexesSqlFile,
       "CREATE INDEX IF NOT EXISTS x_txin_txout ON txin (txout_id);\n"
       "CREATE INDEX IF NOT EXISTS x_txin_txid ON txin (tx_id);\n"
       "CREATE INDEX IF NOT EXISTS x_txout_txid ON txout (tx_id);\n"
-      "CREATE VIEW IF NOT EXISTS tx_full AS SELECT blocks.time, tx.tx_hash, tx.tx_id, txout.address, txout.txout_value FROM txout LEFT JOIN tx ON (tx.tx_id = txout.tx_id) LEFT JOIN blocks ON (tx.block_id = blocks.block_id);\n"
-      "\n"
       );
-    fclose(sqlFile);
+    fclose(indexesSqlFile);
 
     FILE *bashFile = fopen("blockchain.sh", "w");
 
     if (!bashFile) sysErrFatal("Couldn't open file blockchain.sh for writing!\n");
-
 
     fprintf(
       bashFile,
@@ -207,9 +214,11 @@ struct SQLDump : public Callback {
       "    echo done.\n"
       "    rm -f $i.txt\n"
       "    echo\n"
+      "echo '(Re)creating indexes...'\n"
+      "sqlite3 ../blockchain/blockchain.sqlite < blockchain_indexes.sql\n"
+      "rm -f blockchain_indexes.sql\n"
       "done\n"
       "rm -f blockchain.sh\n"
-      "\n"
       );
     fclose(bashFile);
 
