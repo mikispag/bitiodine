@@ -1,11 +1,13 @@
+**BitIodine is no longer actively developed and does not work with the recent Bitcoin block chain. See [my new Clusterizer](https://github.com/mikispag/rusty-blockparser).**
+
+---
+
 BitIodine
 =========
 
-With [BitIodine](https://bitiodine.net) you can find transactions between two addresses or two clusters, address-to-cluster and cluster-to-address, get a list of addresses that sent/received Bitcoin to/from a particular address and visualize clusters controlled by the same user or entity, filtering by amount and time.
+An open and modular block chain analysis framework that allows to perform complex queries on transactions, group addresses together by controlling entity, and much more.
 
 ![BitIodine building blocks](https://miki.it/images/bitiodine_design.png)
-
-More info at: https://bitiodine.net.
 
 Dependencies
 -------------
