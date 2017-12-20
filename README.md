@@ -1,4 +1,4 @@
-**BitIodine is no longer actively developed and does not work with the recent Bitcoin block chain. See [my new Clusterizer](https://github.com/mikispag/rusty-blockparser).**
+**BitIodine is no longer actively developed as an Open Source project and does not work with the recent Bitcoin block chain. Please contact @mikispag if you are interested in a production-quality rewritten version of the Clusterizer, as a service.**
 
 ---
 
@@ -6,8 +6,6 @@ BitIodine
 =========
 
 An open and modular block chain analysis framework that allows to perform complex queries on transactions, group addresses together by controlling entity, and much more.
-
-![BitIodine building blocks](https://miki.it/images/bitiodine_design.png)
 
 Dependencies
 -------------
