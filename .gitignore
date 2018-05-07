@@ -1,0 +1,8 @@
+.DS_Store
+logs
+target
+.idea
+Cargo.lock
+*.iml
+*.csv*
+*.txt
