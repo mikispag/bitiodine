@@ -1,0 +1,3 @@
+max_width = 1024
+write_mode = 'overwrite'
+unstable_features = true
