@@ -31,7 +31,10 @@ impl MerkleHasher {
             height += 1;
             self.count -= 1;
         }
-        self.hashes[self.count as usize] = MerkleEntry { hash: hash, height: height };
+        self.hashes[self.count as usize] = MerkleEntry {
+            hash: hash,
+            height: height,
+        };
         self.count += 1;
     }
 

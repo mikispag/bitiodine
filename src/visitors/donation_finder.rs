@@ -16,7 +16,12 @@ impl<'a> BlockChainVisitor<'a> for DonationFinder {
 
     fn visit_transaction_begin(&mut self, _hasher: &mut ()) {}
 
-    fn visit_transaction_output(&mut self, txout: TransactionOutput<'a>, _block_item: &mut (), _transaction_item: &mut ()) -> Option<Self::OutputItem> {
+    fn visit_transaction_output(
+        &mut self,
+        txout: TransactionOutput<'a>,
+        _block_item: &mut (),
+        _transaction_item: &mut (),
+    ) -> Option<Self::OutputItem> {
         match txout.script.to_highlevel() {
             HighLevel::Donation | HighLevel::Unknown(..) if txout.value > 0 => Some(()),
             _ => None,

@@ -19,13 +19,34 @@ pub trait BlockChainVisitor<'a> {
     fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) -> Self::BlockItem;
     fn visit_block_end(&mut self, _block: Block<'a>, _height: u64, _block_item: Self::BlockItem) {}
 
-    fn visit_transaction_begin(&mut self, _block_item: &mut Self::BlockItem) -> Self::TransactionItem;
-    fn visit_transaction_input(&mut self, _txin: TransactionInput<'a>, _block_item: &mut Self::BlockItem, _tx_item: &mut Self::TransactionItem, _output_item: Option<Self::OutputItem>) {}
+    fn visit_transaction_begin(
+        &mut self,
+        _block_item: &mut Self::BlockItem,
+    ) -> Self::TransactionItem;
+    fn visit_transaction_input(
+        &mut self,
+        _txin: TransactionInput<'a>,
+        _block_item: &mut Self::BlockItem,
+        _tx_item: &mut Self::TransactionItem,
+        _output_item: Option<Self::OutputItem>,
+    ) {
+    }
 
-    fn visit_transaction_output(&mut self, _txout: TransactionOutput<'a>, _block_item: &mut Self::BlockItem, _tx_item: &mut Self::TransactionItem) -> Option<Self::OutputItem> {
+    fn visit_transaction_output(
+        &mut self,
+        _txout: TransactionOutput<'a>,
+        _block_item: &mut Self::BlockItem,
+        _tx_item: &mut Self::TransactionItem,
+    ) -> Option<Self::OutputItem> {
         None
     }
-    fn visit_transaction_end(&mut self, _tx: Transaction<'a>, _block_item: &mut Self::BlockItem, _tx_item: Self::TransactionItem) {}
+    fn visit_transaction_end(
+        &mut self,
+        _tx: Transaction<'a>,
+        _block_item: &mut Self::BlockItem,
+        _tx_item: Self::TransactionItem,
+    ) {
+    }
 
     fn done(&mut self) -> Result<Self::DoneItem>;
 }

@@ -23,7 +23,12 @@ impl<'a> BlockChainVisitor<'a> for MerkleVisitor {
 
     fn visit_transaction_begin(&mut self, _hasher: &mut MerkleHasher) {}
 
-    fn visit_transaction_end(&mut self, tx: Transaction<'a>, hasher: &mut MerkleHasher, _tx_item: ()) {
+    fn visit_transaction_end(
+        &mut self,
+        tx: Transaction<'a>,
+        hasher: &mut MerkleHasher,
+        _tx_item: (),
+    ) {
         hasher.add(Hash::from_data(tx.slice));
     }
 

@@ -51,7 +51,14 @@ fn initialize_logger() {
         .filter(None, LevelFilter::Info)
         .format(|buf, record| {
             let t = time::now();
-            writeln!(buf, "{}.{:04} - {} - {}", time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(), t.tm_nsec / 100_000, record.level(), record.args())
+            writeln!(
+                buf,
+                "{}.{:04} - {} - {}",
+                time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
+                t.tm_nsec / 100_000,
+                record.level(),
+                record.args()
+            )
         })
         .init();
 }

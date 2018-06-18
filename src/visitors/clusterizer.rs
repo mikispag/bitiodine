@@ -22,7 +22,12 @@ where
 {
     pub fn new() -> Self {
         const CAPACITY: usize = 1000000;
-        DisjointSet { set_size: 0, parent: Vec::with_capacity(CAPACITY), rank: Vec::with_capacity(CAPACITY), map: HashMap::with_capacity(CAPACITY) }
+        DisjointSet {
+            set_size: 0,
+            parent: Vec::with_capacity(CAPACITY),
+            rank: Vec::with_capacity(CAPACITY),
+            map: HashMap::with_capacity(CAPACITY),
+        }
     }
 
     pub fn size(&self) -> usize {
@@ -128,16 +133,35 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
     type DoneItem = usize;
 
     fn new() -> Self {
-        Self { clusters: DisjointSet::new(), writer: LineWriter::new(OpenOptions::new().write(true).create(true).truncate(true).open(Path::new("clusters.csv.tmp")).unwrap()) }
+        Self {
+            clusters: DisjointSet::new(),
+            writer: LineWriter::new(
+                OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(Path::new("clusters.csv.tmp"))
+                    .unwrap(),
+            ),
+        }
     }
 
     fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}
 
-    fn visit_transaction_begin(&mut self, _block_item: &mut Self::BlockItem) -> Self::TransactionItem {
+    fn visit_transaction_begin(
+        &mut self,
+        _block_item: &mut Self::BlockItem,
+    ) -> Self::TransactionItem {
         HashSet::with_capacity(100)
     }
 
-    fn visit_transaction_input(&mut self, txin: TransactionInput<'a>, _block_item: &mut Self::BlockItem, tx_item: &mut Self::TransactionItem, output_item: Option<Self::OutputItem>) {
+    fn visit_transaction_input(
+        &mut self,
+        txin: TransactionInput<'a>,
+        _block_item: &mut Self::BlockItem,
+        tx_item: &mut Self::TransactionItem,
+        output_item: Option<Self::OutputItem>,
+    ) {
         // Ignore coinbase
         if txin.prev_hash == &ZERO_HASH {
             return;
@@ -150,16 +174,32 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         }
     }
 
-    fn visit_transaction_output(&mut self, txout: TransactionOutput<'a>, _block_item: &mut (), _transaction_item: &mut (Self::TransactionItem)) -> Option<Self::OutputItem> {
+    fn visit_transaction_output(
+        &mut self,
+        txout: TransactionOutput<'a>,
+        _block_item: &mut (),
+        _transaction_item: &mut (Self::TransactionItem),
+    ) -> Option<Self::OutputItem> {
         match txout.script.to_highlevel() {
-            HighLevel::PayToPubkeyHash(pkh) => Some(Address::from_hash160(Hash160::from_slice(pkh), 0x00)),
-            HighLevel::PayToScriptHash(pkh) => Some(Address::from_hash160(Hash160::from_slice(pkh), 0x05)),
-            HighLevel::PayToWitnessPubkeyHash(w) | HighLevel::PayToWitnessScriptHash(w) => Some(Address(w.to_address())),
+            HighLevel::PayToPubkeyHash(pkh) => {
+                Some(Address::from_hash160(Hash160::from_slice(pkh), 0x00))
+            }
+            HighLevel::PayToScriptHash(pkh) => {
+                Some(Address::from_hash160(Hash160::from_slice(pkh), 0x05))
+            }
+            HighLevel::PayToWitnessPubkeyHash(w) | HighLevel::PayToWitnessScriptHash(w) => {
+                Some(Address(w.to_address()))
+            }
             _ => None,
         }
     }
 
-    fn visit_transaction_end(&mut self, _tx: Transaction<'a>, _block_item: &mut Self::BlockItem, tx_item: Self::TransactionItem) {
+    fn visit_transaction_end(
+        &mut self,
+        _tx: Transaction<'a>,
+        _block_item: &mut Self::BlockItem,
+        tx_item: Self::TransactionItem,
+    ) {
         // Skip transactions with just one input
         if tx_item.len() > 1 {
             let mut tx_inputs_iter = tx_item.iter();
@@ -177,7 +217,8 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         self.clusters.finalize();
         info!("Exporting {} clusters to CSV...", self.clusters.size());
         for (address, tag) in &self.clusters.map {
-            self.writer.write_all(format!("{},{}\n", address, self.clusters.parent[*tag]).as_bytes())?;
+            self.writer
+                .write_all(format!("{},{}\n", address, self.clusters.parent[*tag]).as_bytes())?;
         }
 
         fs::rename(Path::new("clusters.csv.tmp"), Path::new("clusters.csv"))?;

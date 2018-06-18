@@ -38,10 +38,21 @@ impl<'a> Block<'a> {
         Transactions::new(&self.0[80..])
     }
 
-    pub fn walk<V: BlockChainVisitor<'a>>(&self, visitor: &mut V, height: u64, output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>) -> ParseResult<()> {
+    pub fn walk<V: BlockChainVisitor<'a>>(
+        &self,
+        visitor: &mut V,
+        height: u64,
+        output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>,
+    ) -> ParseResult<()> {
         let header = self.header();
         let mut block_item = visitor.visit_block_begin(*self, height);
-        self.transactions()?.walk(visitor, header.timestamp(), height, &mut block_item, output_items)?;
+        self.transactions()?.walk(
+            visitor,
+            header.timestamp(),
+            height,
+            &mut block_item,
+            output_items,
+        )?;
         visitor.visit_block_end(*self, height, block_item);
         Ok(())
     }

@@ -16,7 +16,12 @@ impl<'a> BlockChainVisitor<'a> for DataOutputFinder {
 
     fn visit_transaction_begin(&mut self, _hasher: &mut ()) {}
 
-    fn visit_transaction_output(&mut self, txout: TransactionOutput<'a>, _block_item: &mut (), _transaction_item: &mut ()) -> Option<Self::OutputItem> {
+    fn visit_transaction_output(
+        &mut self,
+        txout: TransactionOutput<'a>,
+        _block_item: &mut (),
+        _transaction_item: &mut (),
+    ) -> Option<Self::OutputItem> {
         match txout.script.to_highlevel() {
             HighLevel::DataOutput(data) => Some(String::from_utf8_lossy(&data).into_owned()),
             _ => None,

@@ -40,10 +40,24 @@ impl<'a> Transactions<'a> {
         Ok(Transactions { count, slice })
     }
 
-    pub fn walk<V: BlockChainVisitor<'a>>(self, visitor: &mut V, timestamp: u32, height: u64, block_item: &mut V::BlockItem, output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>) -> ParseResult<()> {
+    pub fn walk<V: BlockChainVisitor<'a>>(
+        self,
+        visitor: &mut V,
+        timestamp: u32,
+        height: u64,
+        block_item: &mut V::BlockItem,
+        output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>,
+    ) -> ParseResult<()> {
         let mut slice = self.slice;
         for _ in 0..self.count {
-            Transaction::read_and_walk(&mut slice, visitor, timestamp, height, block_item, output_items)?;
+            Transaction::read_and_walk(
+                &mut slice,
+                visitor,
+                timestamp,
+                height,
+                block_item,
+                output_items,
+            )?;
         }
 
         assert_eq!(slice.len(), 0);
@@ -53,7 +67,14 @@ impl<'a> Transactions<'a> {
 }
 
 impl<'a> Transaction<'a> {
-    pub fn read_and_walk<V: BlockChainVisitor<'a>>(slice: &mut &'a [u8], visitor: &mut V, timestamp: u32, height: u64, block_item: &mut V::BlockItem, output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>) -> ParseResult<Transaction<'a>> {
+    pub fn read_and_walk<V: BlockChainVisitor<'a>>(
+        slice: &mut &'a [u8],
+        visitor: &mut V,
+        timestamp: u32,
+        height: u64,
+        block_item: &mut V::BlockItem,
+        output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>,
+    ) -> ParseResult<Transaction<'a>> {
         // Visit the raw transaction before parsing
         let mut transaction_item = visitor.visit_transaction_begin(block_item);
 
@@ -103,7 +124,8 @@ impl<'a> Transaction<'a> {
         let mut cur_output_items = VecMap::with_capacity(txouts_count as usize);
         for n in 0..txouts_count {
             let o = TransactionOutput::read(slice, timestamp, height)?;
-            let output_item = visitor.visit_transaction_output(o, block_item, &mut transaction_item);
+            let output_item =
+                visitor.visit_transaction_output(o, block_item, &mut transaction_item);
 
             if let Some(output_item) = output_item {
                 cur_output_items.insert(n as usize, output_item);
@@ -111,7 +133,10 @@ impl<'a> Transaction<'a> {
         }
 
         // Hash the transaction data before the witnesses
-        sha256_hasher1.input(read_slice(&mut slice_inputs_and_outputs, slice_inputs_and_outputs.len() - slice.len())?);
+        sha256_hasher1.input(read_slice(
+            &mut slice_inputs_and_outputs,
+            slice_inputs_and_outputs.len() - slice.len(),
+        )?);
 
         // Read the witnesses
         if marker == 0x00 {
@@ -130,7 +155,14 @@ impl<'a> Transaction<'a> {
         sha256_hasher2.input(&tx_hash);
         sha256_hasher2.result(&mut tx_hash);
 
-        let tx = Transaction { version, txid: *Hash::from_slice(&tx_hash), txins_count, txouts_count, lock_time, slice: read_slice(&mut init_slice, init_slice.len() - slice.len())? };
+        let tx = Transaction {
+            version,
+            txid: *Hash::from_slice(&tx_hash),
+            txins_count,
+            txouts_count,
+            lock_time,
+            slice: read_slice(&mut init_slice, init_slice.len() - slice.len())?,
+        };
 
         if cur_output_items.len() > 0 {
             let len = cur_output_items.len();
@@ -161,12 +193,22 @@ impl<'a> TransactionInput<'a> {
         // Read the sequence_no
         let sequence_no = read_u32(slice)?;
 
-        Ok(TransactionInput { prev_hash, prev_index, script: Script::new(script, timestamp, height), sequence_no, slice: read_slice(&mut init_slice, init_slice.len() - slice.len())? })
+        Ok(TransactionInput {
+            prev_hash,
+            prev_index,
+            script: Script::new(script, timestamp, height),
+            sequence_no,
+            slice: read_slice(&mut init_slice, init_slice.len() - slice.len())?,
+        })
     }
 }
 
 impl<'a> TransactionOutput<'a> {
-    pub fn read(slice: &mut &'a [u8], timestamp: u32, height: u64) -> Result<TransactionOutput<'a>> {
+    pub fn read(
+        slice: &mut &'a [u8],
+        timestamp: u32,
+        height: u64,
+    ) -> Result<TransactionOutput<'a>> {
         // Save the initial position
         let mut init_slice = *slice;
 
@@ -178,6 +220,10 @@ impl<'a> TransactionOutput<'a> {
         let script = read_slice(slice, nbytes)?;
 
         // Return the transaction output
-        Ok(TransactionOutput { value, script: Script::new(script, timestamp, height), slice: read_slice(&mut init_slice, init_slice.len() - slice.len())? })
+        Ok(TransactionOutput {
+            value,
+            script: Script::new(script, timestamp, height),
+            slice: read_slice(&mut init_slice, init_slice.len() - slice.len())?,
+        })
     }
 }

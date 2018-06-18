@@ -43,11 +43,19 @@ struct ScriptIter<'a> {
 
 impl<'a> Script<'a> {
     pub fn new(slice: &'a [u8], timestamp: u32, height: u64) -> Script<'a> {
-        Script { slice, height, timestamp }
+        Script {
+            slice,
+            height,
+            timestamp,
+        }
     }
 
     fn iter(&self) -> ScriptIter<'a> {
-        ScriptIter { slice: self.slice, height: self.height, timestamp: self.timestamp }
+        ScriptIter {
+            slice: self.slice,
+            height: self.height,
+            timestamp: self.timestamp,
+        }
     }
 
     pub fn as_slice(&self) -> &'a [u8] {
@@ -66,7 +74,10 @@ impl<'a> Script<'a> {
             22 => {
                 if self.timestamp >= 1503539857 {
                     if &self.slice[..2] == &[0x00, 0x14] {
-                        return match WitnessProgram::from_scriptpubkey(&self.slice[..22], Network::Bitcoin) {
+                        return match WitnessProgram::from_scriptpubkey(
+                            &self.slice[..22],
+                            Network::Bitcoin,
+                        ) {
                             Ok(w) => HighLevel::PayToWitnessPubkeyHash(w),
                             Err(_) => HighLevel::Invalid,
                         };
@@ -75,17 +86,32 @@ impl<'a> Script<'a> {
             }
             23 => {
                 if &skipped_slice[..2] == &[0xa6, 0x14] && skipped_slice[22] == 0x87 {
-                    return HighLevel::Challenge(ChallengeType::Ripemd160(array_ref!(skipped_slice, 2, 20)));
+                    return HighLevel::Challenge(ChallengeType::Ripemd160(array_ref!(
+                        skipped_slice,
+                        2,
+                        20
+                    )));
                 }
                 if &skipped_slice[..2] == &[0xa7, 0x14] && skipped_slice[22] == 0x87 {
-                    return HighLevel::Challenge(ChallengeType::Sha1(array_ref!(skipped_slice, 2, 20)));
+                    return HighLevel::Challenge(ChallengeType::Sha1(array_ref!(
+                        skipped_slice,
+                        2,
+                        20
+                    )));
                 }
                 if &skipped_slice[..2] == &[0xa9, 0x14] && skipped_slice[22] == 0x87 {
-                    return HighLevel::Challenge(ChallengeType::Hash160(array_ref!(skipped_slice, 2, 20)));
+                    return HighLevel::Challenge(ChallengeType::Hash160(array_ref!(
+                        skipped_slice,
+                        2,
+                        20
+                    )));
                 }
             }
             25 => {
-                if &skipped_slice[..3] == &[0x76, 0xa9, 0x14] && (&skipped_slice[23..] == &[0x88, 0xac] || &skipped_slice[23..] == &[0x88, 0xac, 0x61]) {
+                if &skipped_slice[..3] == &[0x76, 0xa9, 0x14]
+                    && (&skipped_slice[23..] == &[0x88, 0xac]
+                        || &skipped_slice[23..] == &[0x88, 0xac, 0x61])
+                {
                     return HighLevel::PayToPubkeyHash(array_ref!(skipped_slice, 3, 20));
                 }
                 if self.timestamp >= 1333238400 {
@@ -95,14 +121,19 @@ impl<'a> Script<'a> {
                 }
             }
             26 => {
-                if &skipped_slice[..3] == &[0x76, 0xa9, 0x14] && &skipped_slice[23..] == &[0x88, 0xac, 0x61] {
+                if &skipped_slice[..3] == &[0x76, 0xa9, 0x14]
+                    && &skipped_slice[23..] == &[0x88, 0xac, 0x61]
+                {
                     return HighLevel::PayToPubkeyHash(array_ref!(skipped_slice, 3, 20));
                 }
             }
             34 => {
                 if self.timestamp >= 1503539857 {
                     if &self.slice[..2] == &[0x00, 0x20] {
-                        return match WitnessProgram::from_scriptpubkey(&self.slice[..34], Network::Bitcoin) {
+                        return match WitnessProgram::from_scriptpubkey(
+                            &self.slice[..34],
+                            Network::Bitcoin,
+                        ) {
                             Ok(w) => HighLevel::PayToWitnessScriptHash(w),
                             Err(_) => HighLevel::Invalid,
                         };
@@ -119,10 +150,18 @@ impl<'a> Script<'a> {
                     }
                 }
                 if &skipped_slice[..2] == &[0xa8, 0x20] && skipped_slice[34] == 0x87 {
-                    return HighLevel::Challenge(ChallengeType::Sha256(array_ref!(skipped_slice, 2, 32)));
+                    return HighLevel::Challenge(ChallengeType::Sha256(array_ref!(
+                        skipped_slice,
+                        2,
+                        32
+                    )));
                 }
                 if &skipped_slice[..2] == &[0xaa, 0x20] && skipped_slice[34] == 0x87 {
-                    return HighLevel::Challenge(ChallengeType::Hash256(array_ref!(skipped_slice, 2, 32)));
+                    return HighLevel::Challenge(ChallengeType::Hash256(array_ref!(
+                        skipped_slice,
+                        2,
+                        32
+                    )));
                 }
             }
             67 => {
@@ -155,7 +194,11 @@ impl<'a> Script<'a> {
             return HighLevel::Invalid;
         }
 
-        if skipped_slice == b"vvv" || skipped_slice == b"v" || skipped_slice == &[0x53, 0x87] || skipped_slice == &[0x82] {
+        if skipped_slice == b"vvv"
+            || skipped_slice == b"v"
+            || skipped_slice == &[0x53, 0x87]
+            || skipped_slice == &[0x82]
+        {
             return HighLevel::Donation;
         }
 
@@ -206,14 +249,18 @@ impl<'a> Script<'a> {
                                         assert!(!is_valid_pubkey(bytes));
                                         return HighLevel::Invalid;
                                     } else {
-                                        if skipped_iter.slice.iter().all(|b| *b == 0xac) || skipped_slice == &[0] {
+                                        if skipped_iter.slice.iter().all(|b| *b == 0xac)
+                                            || skipped_slice == &[0]
+                                        {
                                             return HighLevel::Invalid;
                                         }
                                     }
                                 }
                                 Err(ParseError::Eof) => {
                                     if bytes.len() == 20 {
-                                        return HighLevel::Challenge(ChallengeType::Hash160(array_ref!(bytes, 0, 20)));
+                                        return HighLevel::Challenge(ChallengeType::Hash160(
+                                            array_ref!(bytes, 0, 20),
+                                        ));
                                     } else {
                                         return HighLevel::Invalid;
                                     }
@@ -250,7 +297,11 @@ impl<'a> Script<'a> {
                         }
                     }
                     Err(ParseError::Invalid) => return HighLevel::Invalid,
-                    Ok(OP_ELSE) | Ok(OP_ENDIF) | Ok(OP_RETURN) | Ok(OP_INVALID) | Ok(OP_VER) if nest_level == 0 => return HighLevel::Invalid,
+                    Ok(OP_ELSE) | Ok(OP_ENDIF) | Ok(OP_RETURN) | Ok(OP_INVALID) | Ok(OP_VER)
+                        if nest_level == 0 =>
+                    {
+                        return HighLevel::Invalid
+                    }
                     Ok(OP_IF) | Ok(OP_NOTIF) => {
                         nest_level += 1;
                     }
