@@ -12,10 +12,20 @@ cargo build --release
 
 ## Usage
 
-Enable the desired *visitor* (by default, the Clusterizer is on), rebuild, and run the executable:
+Enable the desired *visitor* (by default, the Clusterizer is on) in `src/main.rs`, rebuild, and run the executable:
 
 ```
 target/release/bitiodine-rust
+```
+
+### Custom blockchain directory
+
+By default, Bitiodine uses the standard `~/.bitcoin/blocks` directory.
+If you need to use a different one, you must create a symbolic link:
+
+```
+mkdir ~/.bitcoin
+ln -sf /path/to/blocks ~/.bitcoin/blocks
 ```
 
 ## Credits
