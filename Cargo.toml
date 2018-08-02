@@ -5,9 +5,10 @@ authors = ["Michele Spagnuolo <mikispag@gmail.com>"]
 
 [dependencies]
 arrayref = "~0.3"
-bitcoin-bech32 = "~0.6"
+bitcoin-bech32 = "~0.8"
 byteorder = "~1.2"
 base58 = "~0.1"
+dirs = "~1.0"
 rust-crypto = "~0.2"
 log = "~0.4"
 env_logger = "~0.5"

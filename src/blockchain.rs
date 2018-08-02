@@ -1,6 +1,7 @@
+extern crate dirs;
+
 use memmap::Mmap;
 use preamble::*;
-use std::env;
 use std::fs::File;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -17,7 +18,7 @@ impl BlockChain {
     pub unsafe fn read() -> BlockChain {
         let mut maps: Vec<Mmap> = Vec::new();
         let mut n: usize = 0;
-        let blocks_dir = env::home_dir()
+        let blocks_dir = dirs::home_dir()
             .expect("Unable to get the home directory!")
             .join(".bitcoin")
             .join("blocks");
