@@ -2,7 +2,6 @@ extern crate dirs;
 
 use memmap::Mmap;
 use preamble::*;
-use std::fs::File;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 struct InitIndexEntry<'a> {
@@ -15,16 +14,13 @@ pub struct BlockChain {
 }
 
 impl BlockChain {
-    pub unsafe fn read() -> BlockChain {
+    pub unsafe fn read(blocks_dir: &str) -> BlockChain {
         let mut maps: Vec<Mmap> = Vec::new();
         let mut n: usize = 0;
-        let blocks_dir = dirs::home_dir()
-            .expect("Unable to get the home directory!")
-            .join(".bitcoin")
-            .join("blocks");
+        let blocks_dir_path = PathBuf::from(blocks_dir);
 
         loop {
-            match File::open(blocks_dir.join(format!("blk{:05}.dat", n))) {
+            match File::open(blocks_dir_path.join(format!("blk{:05}.dat", n))) {
                 Ok(f) => {
                     n += 1;
                     match Mmap::map(&f) {

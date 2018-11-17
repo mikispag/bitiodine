@@ -5,7 +5,6 @@ use std::result;
 
 pub struct Clusterizer {
     clusters: DisjointSet<Address>,
-    writer: LineWriter<File>,
 }
 
 /// Tarjan's Union-Find data structure.
@@ -15,6 +14,8 @@ pub struct DisjointSet<T: Clone + Hash + Eq> {
     rank: Vec<usize>,
     map: HashMap<T, usize>, // Each T entry is mapped onto a usize tag.
 }
+
+const OUTPUT_STRING_CAPACITY: usize = 100usize * 234000000usize;
 
 impl<T> DisjointSet<T>
 where
@@ -130,19 +131,11 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
     type BlockItem = ();
     type TransactionItem = HashSet<Address>;
     type OutputItem = Address;
-    type DoneItem = usize;
+    type DoneItem = (usize, String);
 
     fn new() -> Self {
         Self {
             clusters: DisjointSet::new(),
-            writer: LineWriter::new(
-                OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(Path::new("clusters.csv.tmp"))
-                    .unwrap(),
-            ),
         }
     }
 
@@ -213,16 +206,15 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         }
     }
 
-    fn done(&mut self) -> Result<usize> {
+    fn done(&mut self) -> Result<(usize, String)> {
         self.clusters.finalize();
-        info!("Exporting {} clusters to CSV...", self.clusters.size());
+
+        let mut output_string = String::with_capacity(OUTPUT_STRING_CAPACITY);
         for (address, tag) in &self.clusters.map {
-            self.writer
-                .write_all(format!("{},{}\n", address, self.clusters.parent[*tag]).as_bytes())?;
+            output_string.push_str(&format!("{},{}\n", address, self.clusters.parent[*tag]));
         }
 
-        fs::rename(Path::new("clusters.csv.tmp"), Path::new("clusters.csv"))?;
-        info!("Exported {} clusters to CSV.", self.clusters.size());
-        Ok(self.clusters.size())
+        info!("{} clusters generated.", self.clusters.size());
+        Ok((self.clusters.size(), output_string))
     }
 }

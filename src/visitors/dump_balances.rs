@@ -2,26 +2,19 @@ use preamble::*;
 
 pub struct DumpBalances {
     balances: HashMap<(Address, Option<Hash160>), i64>,
-    writer: LineWriter<File>,
 }
+
+const OUTPUT_STRING_CAPACITY: usize = 100000000usize;
 
 impl<'a> BlockChainVisitor<'a> for DumpBalances {
     type BlockItem = ();
     type TransactionItem = ();
     type OutputItem = (Address, Option<Hash160>, i64);
-    type DoneItem = ();
+    type DoneItem = (usize, String);
 
     fn new() -> Self {
         Self {
             balances: HashMap::with_capacity(1000000),
-            writer: LineWriter::new(
-                OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(Path::new("address_balances.csv"))
-                    .unwrap(),
-            ),
         }
     }
 
@@ -106,22 +99,22 @@ impl<'a> BlockChainVisitor<'a> for DumpBalances {
     }
 
     fn done(&mut self) -> Result<Self::DoneItem> {
+        let mut output_string = String::with_capacity(OUTPUT_STRING_CAPACITY);
+
         for (address_tuple, balance) in &self.balances {
             if *balance == 0 {
                 continue;
             }
             let address = &address_tuple.0;
             let hash160 = address_tuple.1.unwrap_or_default();
-            self.writer.write_all(
-                format!(
-                    "{:.8},{},{}\n",
-                    balance.to_owned() as f64 * 10f64.powf(-8f64),
-                    hash160,
-                    address
-                ).as_bytes(),
-            )?;
+            output_string.push_str(&format!(
+                "{:.8},{},{}\n",
+                balance.to_owned() as f64 * 10f64.powf(-8f64),
+                hash160,
+                address
+            ));
         }
 
-        Ok(())
+        Ok((self.balances.len(), output_string))
     }
 }
