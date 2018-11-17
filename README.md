@@ -18,14 +18,25 @@ Enable the desired *visitor* (by default, the Clusterizer is on) in `src/main.rs
 target/release/bitiodine-rust
 ```
 
-### Custom blockchain directory
-
-By default, Bitiodine uses the standard `~/.bitcoin/blocks` directory.
-If you need to use a different one, you must create a symbolic link:
-
 ```
-mkdir ~/.bitcoin
-ln -sf /path/to/blocks ~/.bitcoin/blocks
+$ ./bitiodine-rust --help
+BitIodine 0.0.2
+Michele Spagnuolo <mikispag@gmail.com>
+A Rust Bitcoin blockchain parser with clustering capabilities, allowing to group together addresses in ownership
+clusters.
+
+USAGE:
+    bitiodine-rust [FLAGS] [OPTIONS]
+
+FLAGS:
+    -h, --help       Prints help information
+    -v               Sets the level of verbosity
+    -V, --version    Prints version information
+
+OPTIONS:
+    -b, --blocks-dir <BLOCKS_DIRECTORY_PATH>    Sets the path to the bitcoind blocks directory [default:
+                                                /home/$USER/.bitcoin/blocks]
+    -o, --output <OUTPUT_FILE>                  Sets the path to the output clusters.csv file [default: clusters.csv]
 ```
 
 ## Credits
