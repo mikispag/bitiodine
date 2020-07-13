@@ -133,9 +133,10 @@ impl<'a> Transaction<'a> {
         }
 
         // Hash the transaction data before the witnesses
+        let slice_inputs_and_outputs_len = slice_inputs_and_outputs.len();
         sha256_hasher1.input(read_slice(
             &mut slice_inputs_and_outputs,
-            slice_inputs_and_outputs.len() - slice.len(),
+            slice_inputs_and_outputs_len - slice.len(),
         )?);
 
         // Read the witnesses
@@ -155,13 +156,14 @@ impl<'a> Transaction<'a> {
         sha256_hasher2.input(&tx_hash);
         sha256_hasher2.result(&mut tx_hash);
 
+        let init_slice_len = init_slice.len();
         let tx = Transaction {
             version,
             txid: *Hash::from_slice(&tx_hash),
             txins_count,
             txouts_count,
             lock_time,
-            slice: read_slice(&mut init_slice, init_slice.len() - slice.len())?,
+            slice: read_slice(&mut init_slice, init_slice_len - slice.len())?,
         };
 
         if cur_output_items.len() > 0 {
@@ -193,12 +195,13 @@ impl<'a> TransactionInput<'a> {
         // Read the sequence_no
         let sequence_no = read_u32(slice)?;
 
+        let init_slice_len = init_slice.len();
         Ok(TransactionInput {
             prev_hash,
             prev_index,
             script: Script::new(script, timestamp, height),
             sequence_no,
-            slice: read_slice(&mut init_slice, init_slice.len() - slice.len())?,
+            slice: read_slice(&mut init_slice, init_slice_len - slice.len())?,
         })
     }
 }
@@ -220,10 +223,11 @@ impl<'a> TransactionOutput<'a> {
         let script = read_slice(slice, nbytes)?;
 
         // Return the transaction output
+        let init_slice_len = init_slice.len();
         Ok(TransactionOutput {
             value,
             script: Script::new(script, timestamp, height),
-            slice: read_slice(&mut init_slice, init_slice.len() - slice.len())?,
+            slice: read_slice(&mut init_slice, init_slice_len - slice.len())?,
         })
     }
 }

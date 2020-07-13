@@ -3,6 +3,7 @@ extern crate arrayref;
 extern crate base58;
 extern crate bitcoin_bech32;
 extern crate byteorder;
+extern crate chrono;
 extern crate clap;
 extern crate crypto;
 extern crate memmap;
@@ -55,12 +56,10 @@ fn initialize_logger(level_filter: LevelFilter) {
     Builder::new()
         .filter(None, level_filter)
         .format(|buf, record| {
-            let t = time::now();
             writeln!(
                 buf,
-                "{}.{:04} - {} - {}",
-                time::strftime("%Y-%m-%d %H:%M:%S", &t).unwrap(),
-                t.tm_nsec / 100_000,
+                "{} - {} - {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
                 record.level(),
                 record.args()
             )

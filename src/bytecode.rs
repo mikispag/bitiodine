@@ -263,7 +263,7 @@ impl<'a> Bytecode<'a> {
 
         match read_u8(slice)? {
             0 => Ok(OP_PUSH(&[])),
-            len @ 0x01...0x4b => {
+            len @ 0x01..=0x4b => {
                 let len = len as usize;
                 let slice = read_slice(slice, len).map_err(|_| ParseError::Invalid)?;
                 Ok(OP_PUSH(slice))
@@ -388,9 +388,8 @@ impl<'a> Bytecode<'a> {
                     Ok(OP_NOP)
                 }
             }
-            0xb2...0xb9 => Ok(OP_NOP),
-            0xba...0xff => Ok(OP_INVALID),
-            _ => panic!("Unreachable code branch."),
+            0xb2..=0xb9 => Ok(OP_NOP),
+            0xba..=0xff => Ok(OP_INVALID),
         }
     }
 

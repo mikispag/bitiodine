@@ -171,7 +171,7 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         &mut self,
         txout: TransactionOutput<'a>,
         _block_item: &mut (),
-        _transaction_item: &mut (Self::TransactionItem),
+        _transaction_item: &mut Self::TransactionItem,
     ) -> Option<Self::OutputItem> {
         match txout.script.to_highlevel() {
             HighLevel::PayToPubkeyHash(pkh) => {
