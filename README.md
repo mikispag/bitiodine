@@ -1,3 +1,5 @@
+> :warning: **This project is no longer actively maintained**: please [contact me](https://miki.it) if you are interested in using BitIodine in any real-world use case!
+
 # Bitiodine
 A Rust Bitcoin blockchain parser with clustering capabilities, allowing to group together addresses in ownership clusters.
 
