@@ -259,7 +259,7 @@ impl<'a> Bytecode<'a> {
                 static VAL: [u8; 1] = [$val];
                 &VAL[..1]
             }};
-        };
+        }
 
         match read_u8(slice)? {
             0 => Ok(OP_PUSH(&[])),

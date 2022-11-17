@@ -34,13 +34,11 @@ mod transactions;
 pub mod visitors;
 
 use blockchain::BlockChain;
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use env_logger::Builder;
 use log::LevelFilter;
 use visitors::clusterizer::Clusterizer;
 use visitors::BlockChainVisitor;
-//use visitors::dump_balances::DumpBalances;
-//use visitors::dump_tx_hashes::DumpTxHashes;
 
 use std::fs::File;
 use std::io::{LineWriter, Write};
@@ -76,45 +74,39 @@ fn main() {
         .into_string()
         .expect("Unable to build a default bitcoind blocks directory!");
 
-    let matches = App::new("BitIodine")
+    let matches = Command::new("BitIodine")
         .version(VERSION)
         .author("Michele Spagnuolo <mikispag@gmail.com>")
         .about("A Rust Bitcoin blockchain parser with clustering capabilities, allowing to group together addresses in ownership clusters.")
-        .arg(Arg::with_name("blocks_dir")
+        .arg(Arg::new("blocks_dir")
             .help("Sets the path to the bitcoind blocks directory")
             .long("blocks-dir")
-            .short("b")
-            .takes_value(true)
+            .short('b')
+            .num_args(1)
             .value_name("BLOCKS_DIRECTORY_PATH")
-            .default_value(&default_blocks_dir))
-        .arg(Arg::with_name("output")
+            .default_value(default_blocks_dir))
+        .arg(Arg::new("output")
             .help("Sets the path to the output clusters.csv file")
             .long("output")
-            .short("o")
-            .takes_value(true)
+            .short('o')
+            .num_args(1)
             .value_name("OUTPUT_FILE")
             .default_value("clusters.csv"))
-        .arg(Arg::with_name("v")
-            .short("v")
-            .multiple(true)
+        .arg(Arg::new("v")
+            .short('v')
+            .num_args(1..)
             .help("Sets the level of verbosity"))
         .get_matches();
 
     let level_filter: LevelFilter;
-    match matches.occurrences_of("v") {
+    match matches.get_count("v") {
         0 => level_filter = LevelFilter::Info,
         1 => level_filter = LevelFilter::Debug,
         2 | _ => level_filter = LevelFilter::Off,
     }
     initialize_logger(level_filter);
 
-    let chain = unsafe { BlockChain::read(matches.value_of("blocks_dir").unwrap()) };
-
-    /*
-    let (_, _, _) = chain
-        .walk(&mut visitors::dump_tx_hashes::DumpTxHashes)
-        .unwrap();
-    */
+    let chain = unsafe { BlockChain::read(matches.get_one::<String>("blocks_dir").unwrap()) };
 
     let mut clusterizer_visitor = Clusterizer::new();
     let (_, _, _) = chain.walk(&mut clusterizer_visitor).unwrap();
@@ -122,25 +114,10 @@ fn main() {
         clusterizer_visitor.done().expect("Clusterizer failed!");
 
     let mut writer = LineWriter::new(
-        File::create(matches.value_of("output").unwrap())
+        File::create(matches.get_one::<String>("output").unwrap())
             .expect("Unable to create the output file!"),
     );
     writer
         .write_all(visitor_output.as_bytes())
         .expect("Unable to write output file!");
-
-    /*
-    let (_, _, map) = chain.walk(&mut visitors::dataoutput_finder::DataOutputFinder).unwrap();
-    for (tx, payload) in map.into_iter() {
-        for (tx_id, data) in payload.into_iter() {
-            println!("{},{},{}", tx, tx_id, data);
-        }
-    }
-    */
-
-    /*
-    let mut balances_visitor = DumpBalances::new();
-    let (_, _, _) = chain.walk(&mut balances_visitor).unwrap();
-    let _ = balances_visitor.done();
-    */
 }
