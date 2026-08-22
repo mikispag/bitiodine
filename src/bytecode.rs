@@ -1,4 +1,5 @@
-use preamble::*;
+use crate::buffer_operations::{read_slice, read_u16, read_u32, read_u8};
+use crate::error::{ParseError, ParseResult};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[allow(non_camel_case_types)]
@@ -22,13 +23,6 @@ pub enum Bytecode<'a> {
     // 0x64
     OP_NOTIF,
 
-    // replaced with ParseError::Invalid
-    // 0x65
-    // OP_VERIF,
-    //
-    // 0x66
-    // OP_VERNOTIF,
-    //
     // 0x67
     OP_ELSE,
 
@@ -98,35 +92,9 @@ pub enum Bytecode<'a> {
     // 0x7d
     OP_TUCK,
 
-    // replaced with ParseError::Invalid
-    // 0x7e
-    // OP_CAT,
-    //
-    // 0x7f
-    // OP_SUBSTR,
-    //
-    // 0x80
-    // OP_LEFT,
-    //
-    // 0x81
-    // OP_RIGHT,
-    //
     // 0x82
     OP_SIZE,
 
-    // replaced with ParseError::Invalid
-    // 0x83
-    // OP_INVERT,
-    //
-    // 0x84
-    // OP_AND,
-    //
-    // 0x85
-    // OP_OR,
-    //
-    // 0x86
-    // OP_XOR,
-    //
     // 0x87
     OP_EQUAL,
 
@@ -139,13 +107,6 @@ pub enum Bytecode<'a> {
     // 0x8c
     OP_1SUB,
 
-    // replaced with ParseError::Invalid
-    // 0x8d
-    // OP_2MUL,
-    //
-    // 0x8e
-    // OP_2DIV,
-    //
     // 0x8f
     OP_NEGATE,
 
@@ -164,22 +125,6 @@ pub enum Bytecode<'a> {
     // 0x94
     OP_SUB,
 
-    // replaced with ParseError::Invalid
-    // 0x95
-    // OP_MUL,
-    //
-    // 0x96
-    // OP_DIV,
-    //
-    // 0x97
-    // OP_MOD,
-    //
-    // 0x98
-    // OP_LSHIFT,
-    //
-    // 0x99
-    // OP_RSHIFT,
-    //
     // 0x9a
     OP_BOOLAND,
 
@@ -254,13 +199,6 @@ pub use self::Bytecode::*;
 
 impl<'a> Bytecode<'a> {
     fn read_raw(slice: &mut &'a [u8], height: u64) -> ParseResult<Bytecode<'a>> {
-        macro_rules! make_static {
-            ($val:expr) => {{
-                static VAL: [u8; 1] = [$val];
-                &VAL[..1]
-            }};
-        }
-
         match read_u8(slice)? {
             0 => Ok(OP_PUSH(&[])),
             len @ 0x01..=0x4b => {
@@ -283,30 +221,30 @@ impl<'a> Bytecode<'a> {
                 let slice = read_slice(slice, len).map_err(|_| ParseError::Invalid)?;
                 Ok(OP_PUSH(slice))
             }
-            0x4f => Ok(OP_PUSH(make_static!(0x81))),
+            0x4f => Ok(OP_PUSH(&[0x81])),
             0x50 => Ok(OP_INVALID),
-            0x51 => Ok(OP_PUSH(make_static!(0x01))),
-            0x52 => Ok(OP_PUSH(make_static!(0x02))),
-            0x53 => Ok(OP_PUSH(make_static!(0x03))),
-            0x54 => Ok(OP_PUSH(make_static!(0x04))),
-            0x55 => Ok(OP_PUSH(make_static!(0x05))),
-            0x56 => Ok(OP_PUSH(make_static!(0x06))),
-            0x57 => Ok(OP_PUSH(make_static!(0x07))),
-            0x58 => Ok(OP_PUSH(make_static!(0x08))),
-            0x59 => Ok(OP_PUSH(make_static!(0x09))),
-            0x5a => Ok(OP_PUSH(make_static!(0x0a))),
-            0x5b => Ok(OP_PUSH(make_static!(0x0b))),
-            0x5c => Ok(OP_PUSH(make_static!(0x0c))),
-            0x5d => Ok(OP_PUSH(make_static!(0x0d))),
-            0x5e => Ok(OP_PUSH(make_static!(0x0e))),
-            0x5f => Ok(OP_PUSH(make_static!(0x0f))),
-            0x60 => Ok(OP_PUSH(make_static!(0x10))),
+            0x51 => Ok(OP_PUSH(&[0x01])),
+            0x52 => Ok(OP_PUSH(&[0x02])),
+            0x53 => Ok(OP_PUSH(&[0x03])),
+            0x54 => Ok(OP_PUSH(&[0x04])),
+            0x55 => Ok(OP_PUSH(&[0x05])),
+            0x56 => Ok(OP_PUSH(&[0x06])),
+            0x57 => Ok(OP_PUSH(&[0x07])),
+            0x58 => Ok(OP_PUSH(&[0x08])),
+            0x59 => Ok(OP_PUSH(&[0x09])),
+            0x5a => Ok(OP_PUSH(&[0x0a])),
+            0x5b => Ok(OP_PUSH(&[0x0b])),
+            0x5c => Ok(OP_PUSH(&[0x0c])),
+            0x5d => Ok(OP_PUSH(&[0x0d])),
+            0x5e => Ok(OP_PUSH(&[0x0e])),
+            0x5f => Ok(OP_PUSH(&[0x0f])),
+            0x60 => Ok(OP_PUSH(&[0x10])),
             0x61 => Ok(OP_NOP),
             0x62 => Ok(OP_VER),
             0x63 => Ok(OP_IF),
             0x64 => Ok(OP_NOTIF),
-            0x65 => Err(ParseError::Invalid), // Simplified from OP_VERIF
-            0x66 => Err(ParseError::Invalid), // Simplified from OP_VERNOTIF
+            0x65 => Err(ParseError::Invalid), // OP_VERIF
+            0x66 => Err(ParseError::Invalid), // OP_VERNOTIF
             0x67 => Ok(OP_ELSE),
             0x68 => Ok(OP_ENDIF),
             0x69 => Ok(OP_VERIFY),
@@ -330,34 +268,34 @@ impl<'a> Bytecode<'a> {
             0x7b => Ok(OP_ROT),
             0x7c => Ok(OP_SWAP),
             0x7d => Ok(OP_TUCK),
-            0x7e => Err(ParseError::Invalid), // Simplified from OP_CAT
-            0x7f => Err(ParseError::Invalid), // Simplified from OP_SUBSTR
-            0x80 => Err(ParseError::Invalid), // Simplified from OP_LEFT
-            0x81 => Err(ParseError::Invalid), // Simplified from OP_RIGHT
+            0x7e => Err(ParseError::Invalid), // OP_CAT
+            0x7f => Err(ParseError::Invalid), // OP_SUBSTR
+            0x80 => Err(ParseError::Invalid), // OP_LEFT
+            0x81 => Err(ParseError::Invalid), // OP_RIGHT
             0x82 => Ok(OP_SIZE),
-            0x83 => Err(ParseError::Invalid), // Simplified from OP_INVERT
-            0x84 => Err(ParseError::Invalid), // Simplified from OP_AND
-            0x85 => Err(ParseError::Invalid), // Simplified from OP_OR
-            0x86 => Err(ParseError::Invalid), // Simplified from OP_XOR
+            0x83 => Err(ParseError::Invalid), // OP_INVERT
+            0x84 => Err(ParseError::Invalid), // OP_AND
+            0x85 => Err(ParseError::Invalid), // OP_OR
+            0x86 => Err(ParseError::Invalid), // OP_XOR
             0x87 => Ok(OP_EQUAL),
             0x88 => Ok(OP_EQUALVERIFY),
             0x89 => Ok(OP_INVALID),
             0x8a => Ok(OP_INVALID),
             0x8b => Ok(OP_1ADD),
             0x8c => Ok(OP_1SUB),
-            0x8d => Err(ParseError::Invalid), // Simplified from OP_2MUL
-            0x8e => Err(ParseError::Invalid), // Simplified from OP_2DIV
+            0x8d => Err(ParseError::Invalid), // OP_2MUL
+            0x8e => Err(ParseError::Invalid), // OP_2DIV
             0x8f => Ok(OP_NEGATE),
             0x90 => Ok(OP_ABS),
             0x91 => Ok(OP_NOT),
             0x92 => Ok(OP_0NOTEQUAL),
             0x93 => Ok(OP_ADD),
             0x94 => Ok(OP_SUB),
-            0x95 => Err(ParseError::Invalid), // Simplified from OP_MUL
-            0x96 => Err(ParseError::Invalid), // Simplified from OP_DIV
-            0x97 => Err(ParseError::Invalid), // Simplified from OP_MOD
-            0x98 => Err(ParseError::Invalid), // Simplified from OP_LSHIFT
-            0x99 => Err(ParseError::Invalid), // Simplified from OP_RSHIFT
+            0x95 => Err(ParseError::Invalid), // OP_MUL
+            0x96 => Err(ParseError::Invalid), // OP_DIV
+            0x97 => Err(ParseError::Invalid), // OP_MOD
+            0x98 => Err(ParseError::Invalid), // OP_LSHIFT
+            0x99 => Err(ParseError::Invalid), // OP_RSHIFT
             0x9a => Ok(OP_BOOLAND),
             0x9b => Ok(OP_BOOLOR),
             0x9c => Ok(OP_NUMEQUAL),

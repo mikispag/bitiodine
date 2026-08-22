@@ -1,26 +1,35 @@
-extern crate dirs;
+use log::{debug, info};
+use memmap2::Mmap;
+use std::collections::HashMap;
+use std::fs::File;
+use std::path::Path;
+use vec_map::VecMap;
 
-use memmap::Mmap;
-use preamble::*;
+use crate::block::Block;
+use crate::error::ParseResult;
+use crate::hash::{Hash, ZERO_HASH};
+use crate::visitors::BlockChainVisitor;
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-struct InitIndexEntry<'a> {
-    block: Option<Block<'a>>,
-    child_hash: Option<Hash>,
-}
+pub type OutputMap<T> = HashMap<Hash, VecMap<T>>;
 
 pub struct BlockChain {
     maps: Vec<Mmap>,
 }
 
 impl BlockChain {
-    pub unsafe fn read(blocks_dir: &str) -> BlockChain {
+    /// Reads and memory-maps all `blk*.dat` Bitcoin block files from `blocks_dir`.
+    ///
+    /// # Safety
+    /// The caller must ensure that the block files are not concurrently mutated or truncated
+    /// by another process (such as `bitcoind`) while mapped, as that could cause undefined behavior.
+    pub unsafe fn read<P: AsRef<Path>>(blocks_dir: P) -> BlockChain {
         let mut maps: Vec<Mmap> = Vec::new();
         let mut n: usize = 0;
-        let blocks_dir_path = PathBuf::from(blocks_dir);
+        let blocks_dir_path = blocks_dir.as_ref();
 
         loop {
-            match File::open(blocks_dir_path.join(format!("blk{:05}.dat", n))) {
+            let blk_path = blocks_dir_path.join(format!("blk{:05}.dat", n));
+            match File::open(&blk_path) {
                 Ok(f) => {
                     n += 1;
                     match Mmap::map(&f) {
@@ -41,6 +50,7 @@ impl BlockChain {
         BlockChain { maps }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn walk_slice<'a, V: BlockChainVisitor<'a>>(
         &'a self,
         mut slice: &'a [u8],
@@ -48,10 +58,10 @@ impl BlockChain {
         last_block: &mut Option<Block<'a>>,
         height: &mut u64,
         skipped: &mut HashMap<Hash, Block<'a>>,
-        output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>,
+        output_items: &mut OutputMap<V::OutputItem>,
         visitor: &mut V,
     ) -> ParseResult<()> {
-        while slice.len() > 0 {
+        while !slice.is_empty() {
             if skipped.contains_key(goal_prev_hash) {
                 last_block.unwrap().walk(visitor, *height, output_items)?;
                 debug!(
@@ -83,7 +93,13 @@ impl BlockChain {
                 }
             };
 
-            debug!("Block candidate for height {} - goal_prev_hash = {}, prev_hash = {}, cur_hash = {}", height, goal_prev_hash.to_string(), block.header().prev_hash(), block.header().cur_hash());
+            debug!(
+                "Block candidate for height {} - goal_prev_hash = {}, prev_hash = {}, cur_hash = {}",
+                height,
+                goal_prev_hash,
+                block.header().prev_hash(),
+                block.header().cur_hash()
+            );
 
             if block.header().prev_hash() != goal_prev_hash {
                 skipped.insert(*block.header().prev_hash(), block);
@@ -153,9 +169,9 @@ impl BlockChain {
     pub fn walk<'a, V: BlockChainVisitor<'a>>(
         &'a self,
         visitor: &mut V,
-    ) -> ParseResult<(u64, Hash, HashMap<Hash, VecMap<V::OutputItem>>)> {
+    ) -> ParseResult<(u64, Hash, OutputMap<V::OutputItem>)> {
         let mut skipped: HashMap<Hash, Block> = Default::default();
-        let mut output_items: HashMap<Hash, VecMap<V::OutputItem>> = Default::default();
+        let mut output_items: OutputMap<V::OutputItem> = Default::default();
         let mut goal_prev_hash: Hash = ZERO_HASH;
         let mut last_block: Option<Block> = None;
         let mut height = 0;
@@ -164,7 +180,7 @@ impl BlockChain {
             info!(
                 "Parsing the blockchain: block file {}/{}...",
                 n,
-                self.maps.len() - 1
+                self.maps.len().saturating_sub(1)
             );
             self.walk_slice(
                 map,

@@ -1,6 +1,13 @@
-use crypto::digest::Digest;
-use crypto::sha2::Sha256;
-use preamble::*;
+use sha2::{Digest, Sha256};
+use std::collections::hash_map::Entry as HashEntry;
+use std::collections::HashMap;
+use vec_map::VecMap;
+
+use crate::buffer_operations::{read_array, read_slice, read_u32, read_u64, read_u8, read_var_int};
+use crate::error::{ParseError, ParseResult, Result};
+use crate::hash::Hash;
+use crate::script::Script;
+use crate::visitors::BlockChainVisitor;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Transactions<'a> {
@@ -35,7 +42,7 @@ pub struct TransactionOutput<'a> {
 }
 
 impl<'a> Transactions<'a> {
-    pub fn new(mut slice: &[u8]) -> Result<Transactions> {
+    pub fn new(mut slice: &'a [u8]) -> Result<Transactions<'a>> {
         let count = read_var_int(&mut slice)?;
         Ok(Transactions { count, slice })
     }
@@ -78,14 +85,12 @@ impl<'a> Transaction<'a> {
         // Visit the raw transaction before parsing
         let mut transaction_item = visitor.visit_transaction_begin(block_item);
 
-        let mut tx_hash = [0u8; 32];
         let mut sha256_hasher1 = Sha256::new();
-        let mut sha256_hasher2 = sha256_hasher1;
 
         // Save the initial position in two slices
         let mut init_slice = *slice;
 
-        sha256_hasher1.input(&slice[..4]);
+        sha256_hasher1.update(&slice[..4]);
         let version = read_u32(slice)?;
 
         let marker = slice[0];
@@ -111,7 +116,7 @@ impl<'a> Transaction<'a> {
             let mut output_item = None;
             if let HashEntry::Occupied(mut occupied) = output_items.entry(*i.prev_hash) {
                 output_item = occupied.get_mut().remove(i.prev_index as usize);
-                if occupied.get().len() == 0 {
+                if occupied.get().is_empty() {
                     occupied.remove();
                 }
             }
@@ -134,7 +139,7 @@ impl<'a> Transaction<'a> {
 
         // Hash the transaction data before the witnesses
         let slice_inputs_and_outputs_len = slice_inputs_and_outputs.len();
-        sha256_hasher1.input(read_slice(
+        sha256_hasher1.update(read_slice(
             &mut slice_inputs_and_outputs,
             slice_inputs_and_outputs_len - slice.len(),
         )?);
@@ -150,11 +155,11 @@ impl<'a> Transaction<'a> {
             }
         }
 
-        sha256_hasher1.input(&slice[..4]);
+        sha256_hasher1.update(&slice[..4]);
         let lock_time = read_u32(slice)?;
-        sha256_hasher1.result(&mut tx_hash);
-        sha256_hasher2.input(&tx_hash);
-        sha256_hasher2.result(&mut tx_hash);
+        let first_digest = sha256_hasher1.finalize();
+        let second_digest = Sha256::digest(first_digest);
+        let tx_hash: [u8; 32] = second_digest.into();
 
         let init_slice_len = init_slice.len();
         let tx = Transaction {
@@ -166,7 +171,7 @@ impl<'a> Transaction<'a> {
             slice: read_slice(&mut init_slice, init_slice_len - slice.len())?,
         };
 
-        if cur_output_items.len() > 0 {
+        if !cur_output_items.is_empty() {
             let len = cur_output_items.len();
             cur_output_items.reserve_len_exact(len);
             output_items.insert(*Hash::from_slice(&tx_hash), cur_output_items);
@@ -183,7 +188,8 @@ impl<'a> TransactionInput<'a> {
         let mut init_slice = *slice;
 
         // Read the prev_hash
-        let prev_hash = Hash::from_slice(read_array!(slice, 32)?);
+        let prev_hash_bytes = read_array::<32>(slice)?;
+        let prev_hash = Hash::from_slice(prev_hash_bytes);
 
         // Read the prev_index
         let prev_index = read_u32(slice)?;

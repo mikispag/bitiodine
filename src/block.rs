@@ -1,14 +1,22 @@
-use preamble::*;
+use std::collections::HashMap;
+use vec_map::VecMap;
+
+use crate::buffer_operations::{read_array, read_slice, read_u32};
+use crate::error::{ParseError, ParseResult, Result};
+use crate::hash::Hash;
+use crate::header::BlockHeader;
+use crate::transactions::Transactions;
+use crate::visitors::BlockChainVisitor;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub struct Block<'a>(&'a [u8]);
+pub struct Block<'a>(pub &'a [u8]);
 
 impl<'a> Block<'a> {
     pub fn read(slice: &mut &'a [u8]) -> ParseResult<Option<Block<'a>>> {
-        while slice.len() > 0 && slice[0] == 0 {
+        while !slice.is_empty() && slice[0] == 0 {
             *slice = &slice[1..];
         }
-        if slice.len() == 0 {
+        if slice.is_empty() {
             Ok(None)
         } else {
             let block_magic = read_u32(slice)?;
@@ -31,7 +39,7 @@ impl<'a> Block<'a> {
 
     pub fn header(&self) -> BlockHeader<'a> {
         let mut slice = self.0;
-        BlockHeader::new(read_array!(&mut slice, 80).unwrap())
+        BlockHeader::new(read_array::<80>(&mut slice).unwrap())
     }
 
     pub fn transactions(&self) -> Result<Transactions<'a>> {
