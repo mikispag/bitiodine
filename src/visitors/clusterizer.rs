@@ -1,4 +1,5 @@
 use log::info;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::Write;
@@ -14,6 +15,11 @@ use crate::visitors::BlockChainVisitor;
 
 pub struct Clusterizer {
     pub clusters: DisjointSet<Address>,
+}
+
+pub struct TransactionClusterState {
+    pub input_addresses: HashSet<Address>,
+    pub output_values: Vec<u64>,
 }
 
 /// Tarjan's Union-Find data structure with union-by-rank and path compression.
@@ -64,17 +70,19 @@ where
         self.set_size == 0
     }
 
-    pub fn make_set(&mut self, x: T) {
-        if self.map.contains_key(&x) {
-            return;
+    /// Registers element x in the disjoint set if not present, returning its tag.
+    pub fn make_set(&mut self, x: T) -> usize {
+        match self.map.entry(x) {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(entry) => {
+                let len = self.set_size;
+                entry.insert(len);
+                self.parent.push(len);
+                self.rank.push(0);
+                self.set_size += 1;
+                len
+            }
         }
-
-        let len = self.set_size;
-        self.map.insert(x, len);
-        self.parent.push(len);
-        self.rank.push(0);
-
-        self.set_size += 1;
     }
 
     /// Returns Some(tag), the root tag of the subset containing x.
@@ -141,9 +149,28 @@ impl Clusterizer {
     }
 }
 
+/// Detects whether a transaction is a CoinJoin mixer transaction (e.g. Wasabi/Samourai/Whirlpool)
+/// based on presence of 3 or more identical non-zero output amounts.
+fn is_coinjoin(output_values: &[u64]) -> bool {
+    if output_values.len() < 3 {
+        return false;
+    }
+    let mut counts: HashMap<u64, usize> = HashMap::with_capacity(output_values.len());
+    for &val in output_values {
+        if val > 0 {
+            let count = counts.entry(val).or_insert(0);
+            *count += 1;
+            if *count >= 3 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 impl<'a> BlockChainVisitor<'a> for Clusterizer {
     type BlockItem = ();
-    type TransactionItem = HashSet<Address>;
+    type TransactionItem = TransactionClusterState;
     type OutputItem = Address;
     type DoneItem = (usize, String);
 
@@ -159,7 +186,10 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         &mut self,
         _block_item: &mut Self::BlockItem,
     ) -> Self::TransactionItem {
-        HashSet::with_capacity(100)
+        TransactionClusterState {
+            input_addresses: HashSet::with_capacity(32),
+            output_values: Vec::with_capacity(16),
+        }
     }
 
     fn visit_transaction_input(
@@ -174,7 +204,7 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
             return;
         }
         if let Some(address) = output_item {
-            tx_item.insert(address);
+            tx_item.input_addresses.insert(address);
         }
     }
 
@@ -182,8 +212,10 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         &mut self,
         txout: TransactionOutput<'a>,
         _block_item: &mut (),
-        _transaction_item: &mut Self::TransactionItem,
+        transaction_item: &mut Self::TransactionItem,
     ) -> Option<Self::OutputItem> {
+        transaction_item.output_values.push(txout.value);
+
         match txout.script.to_highlevel() {
             HighLevel::PayToPubkeyHash(pkh) => {
                 Some(Address::from_hash160(Hash160::from_slice(pkh), 0x00))
@@ -191,9 +223,9 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
             HighLevel::PayToScriptHash(pkh) => {
                 Some(Address::from_hash160(Hash160::from_slice(pkh), 0x05))
             }
-            HighLevel::PayToWitnessPubkeyHash(w) | HighLevel::PayToWitnessScriptHash(w) => {
-                Some(Address(w.to_address()))
-            }
+            HighLevel::PayToWitnessPubkeyHash(w)
+            | HighLevel::PayToWitnessScriptHash(w)
+            | HighLevel::PayToWitnessTaproot(w) => Some(Address(w.to_address())),
             _ => None,
         }
     }
@@ -204,14 +236,19 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         _block_item: &mut Self::BlockItem,
         tx_item: Self::TransactionItem,
     ) {
-        // Skip transactions with just one input
-        if tx_item.len() > 1 {
-            let mut tx_inputs_iter = tx_item.iter();
+        // Skip CoinJoin mixer transactions to avoid false-positive super-clusters
+        if is_coinjoin(&tx_item.output_values) {
+            return;
+        }
+
+        // Merge inputs according to multi-input clustering heuristic
+        if tx_item.input_addresses.len() > 1 {
+            let mut tx_inputs_iter = tx_item.input_addresses.into_iter();
             let mut last_address = tx_inputs_iter.next().unwrap();
             self.clusters.make_set(last_address.clone());
             for address in tx_inputs_iter {
                 self.clusters.make_set(address.clone());
-                let _ = self.clusters.union(last_address, address);
+                let _ = self.clusters.union(&last_address, &address);
                 last_address = address;
             }
         }

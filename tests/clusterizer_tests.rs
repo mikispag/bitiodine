@@ -11,6 +11,11 @@ fn test_disjoint_set_union_find() {
 
     assert_eq!(ds.size(), 4);
 
+    // Duplicate make_set should not increase size
+    let tag = ds.make_set("addr1");
+    assert_eq!(ds.size(), 4);
+    assert_eq!(ds.find(&"addr1"), Some(tag));
+
     // Initial roots should be distinct
     let r1 = ds.find(&"addr1").unwrap();
     let r2 = ds.find(&"addr2").unwrap();
