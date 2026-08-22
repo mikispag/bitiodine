@@ -144,6 +144,33 @@ cargo clippy --all-targets -- -D warnings
 
 ---
 
+## Research & Academic Citation
+
+BitIodine is based on the pioneering academic research on Bitcoin transaction graph analysis and address clustering:
+
+> **[BitIodine: Extracting Intelligence from the Bitcoin Network](https://link.springer.com/chapter/10.1007/978-3-662-45472-5_29)**  
+> Michele Spagnuolo, Federico Maggi, and Stefano Zanero  
+> *Financial Cryptography and Data Security (FC 2014)*, Lecture Notes in Computer Science, vol 8437. Springer, Berlin, Heidelberg.  
+> DOI: [10.1007/978-3-662-45472-5_29](https://doi.org/10.1007/978-3-662-45472-5_29)
+
+If you use BitIodine in academic research, please cite the paper:
+
+```bibtex
+@inproceedings{spagnuolo2014bitiodine,
+  title     = {{BitIodine}: Extracting Intelligence from the {Bitcoin} Network},
+  author    = {Spagnuolo, Michele and Maggi, Federico and Zanero, Stefano},
+  booktitle = {Financial Cryptography and Data Security (FC)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {8437},
+  pages     = {457--468},
+  year      = {2014},
+  publisher = {Springer},
+  doi       = {10.1007/978-3-662-45472-5_29}
+}
+```
+
+---
+
 ## Credits
 
 The blockchain parser architecture is based on research and code originally developed by Michele Spagnuolo ([miki.it](https://miki.it)) and Mathias Svensson.
