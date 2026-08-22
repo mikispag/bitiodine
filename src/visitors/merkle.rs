@@ -1,6 +1,5 @@
 use crate::block::Block;
 use crate::error::Result;
-use crate::hash::Hash;
 use crate::merkle::MerkleHasher;
 use crate::transactions::Transaction;
 use crate::visitors::BlockChainVisitor;
@@ -34,7 +33,7 @@ impl<'a> BlockChainVisitor<'a> for MerkleVisitor {
         hasher: &mut MerkleHasher,
         _tx_item: (),
     ) {
-        hasher.add(Hash::from_data(tx.slice));
+        hasher.add(tx.txid);
     }
 
     fn done(&mut self) -> Result<Self::DoneItem> {

@@ -90,6 +90,14 @@ fn main() {
         cli.blocks_dir.display()
     );
     let chain = unsafe { BlockChain::read(&cli.blocks_dir) };
+    if chain.is_empty() {
+        error!(
+            "No Bitcoin block files (blk*.dat) found in: {}. Please verify the --blocks-dir path.",
+            cli.blocks_dir.display()
+        );
+        return;
+    }
+    info!("Found {} block file(s) to process.", chain.len());
 
     match cli.action {
         Action::Clusterizer => {

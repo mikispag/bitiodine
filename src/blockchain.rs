@@ -32,6 +32,10 @@ impl BlockChain {
             match File::open(&blk_path) {
                 Ok(f) => {
                     n += 1;
+                    // Skip empty/0-byte preallocated files
+                    if f.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+                        continue;
+                    }
                     match Mmap::map(&f) {
                         Ok(m) => {
                             maps.push(m);
@@ -50,6 +54,14 @@ impl BlockChain {
         BlockChain { maps }
     }
 
+    pub fn len(&self) -> usize {
+        self.maps.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.maps.is_empty()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn walk_slice<'a, V: BlockChainVisitor<'a>>(
         &'a self,
@@ -63,14 +75,16 @@ impl BlockChain {
     ) -> ParseResult<()> {
         while !slice.is_empty() {
             if skipped.contains_key(goal_prev_hash) {
-                last_block.unwrap().walk(visitor, *height, output_items)?;
-                debug!(
-                    "(rewind - pre-step) Block {} - {} -> {}",
-                    height,
-                    last_block.unwrap().header().prev_hash(),
-                    last_block.unwrap().header().cur_hash()
-                );
-                *height += 1;
+                if let Some(lb) = last_block.take() {
+                    lb.walk(visitor, *height, output_items)?;
+                    debug!(
+                        "(rewind - pre-step) Block {} - {} -> {}",
+                        height,
+                        lb.header().prev_hash(),
+                        lb.header().cur_hash()
+                    );
+                    *height += 1;
+                }
                 while let Some(block) = skipped.remove(goal_prev_hash) {
                     block.walk(visitor, *height, output_items)?;
                     debug!(
@@ -81,7 +95,6 @@ impl BlockChain {
                     );
                     *height += 1;
                     *goal_prev_hash = block.header().cur_hash();
-                    *last_block = None;
                 }
             }
 
@@ -148,13 +161,13 @@ impl BlockChain {
                 continue;
             }
 
-            if let Some(last_block) = *last_block {
-                last_block.walk(visitor, *height, output_items)?;
+            if let Some(lb) = last_block.take() {
+                lb.walk(visitor, *height, output_items)?;
                 debug!(
                     "(last_block) Block {} - {} -> {}",
                     height,
-                    last_block.header().prev_hash(),
-                    last_block.header().cur_hash()
+                    lb.header().prev_hash(),
+                    lb.header().cur_hash()
                 );
                 *height += 1;
             }
