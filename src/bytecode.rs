@@ -193,6 +193,9 @@ pub enum Bytecode<'a> {
 
     // 0xb1
     OP_CHECKLOCKTIMEVERIFY,
+
+    // 0xb2
+    OP_CHECKSEQUENCEVERIFY,
 }
 
 pub use self::Bytecode::*;
@@ -326,7 +329,14 @@ impl<'a> Bytecode<'a> {
                     Ok(OP_NOP)
                 }
             }
-            0xb2..=0xb9 => Ok(OP_NOP),
+            0xb2 => {
+                if height >= 419328 {
+                    Ok(OP_CHECKSEQUENCEVERIFY)
+                } else {
+                    Ok(OP_NOP)
+                }
+            }
+            0xb3..=0xb9 => Ok(OP_NOP),
             0xba..=0xff => Ok(OP_INVALID),
         }
     }

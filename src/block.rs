@@ -8,11 +8,21 @@ use crate::header::BlockHeader;
 use crate::transactions::Transactions;
 use crate::visitors::BlockChainVisitor;
 
+pub const MAINNET_MAGIC: u32 = 0xd9b4bef9;
+pub const TESTNET3_MAGIC: u32 = 0x0709110b;
+pub const TESTNET4_MAGIC: u32 = 0x283da71c;
+pub const SIGNET_MAGIC: u32 = 0x40cf030a;
+pub const REGTEST_MAGIC: u32 = 0xdab5bffa;
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Block<'a>(pub &'a [u8]);
 
 impl<'a> Block<'a> {
     pub fn read(slice: &mut &'a [u8]) -> ParseResult<Option<Block<'a>>> {
+        Self::read_with_magic(slice, MAINNET_MAGIC)
+    }
+
+    pub fn read_with_magic(slice: &mut &'a [u8], magic: u32) -> ParseResult<Option<Block<'a>>> {
         while !slice.is_empty() && slice[0] == 0 {
             *slice = &slice[1..];
         }
@@ -23,8 +33,7 @@ impl<'a> Block<'a> {
             match block_magic {
                 // Incomplete blk file
                 0x00 => Ok(None),
-                // Bitcoin magic value
-                0xd9b4bef9 => {
+                m if m == magic => {
                     let block_len = read_u32(slice)? as usize;
                     if block_len < 80 {
                         Err(ParseError::Eof)

@@ -116,7 +116,8 @@ impl<'a> BlockChainVisitor<'a> for DumpBalances {
             }
             HighLevel::PayToWitnessPubkeyHash(w)
             | HighLevel::PayToWitnessScriptHash(w)
-            | HighLevel::PayToWitnessTaproot(w) => {
+            | HighLevel::PayToWitnessTaproot(w)
+            | HighLevel::PayToWitnessGeneral(w) => {
                 let address = Address(w.to_address());
                 *self.balances.entry((address.clone(), None)).or_insert(0) += value;
                 Some((address, None, value))

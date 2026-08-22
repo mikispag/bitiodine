@@ -43,7 +43,8 @@ impl<'a> BlockChainVisitor<'a> for DumpAddresses {
             ),
             HighLevel::PayToWitnessPubkeyHash(w)
             | HighLevel::PayToWitnessScriptHash(w)
-            | HighLevel::PayToWitnessTaproot(w) => Some(vec![Address(w.to_address())]),
+            | HighLevel::PayToWitnessTaproot(w)
+            | HighLevel::PayToWitnessGeneral(w) => Some(vec![Address(w.to_address())]),
             _ => None,
         };
 

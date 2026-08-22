@@ -225,7 +225,8 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
             }
             HighLevel::PayToWitnessPubkeyHash(w)
             | HighLevel::PayToWitnessScriptHash(w)
-            | HighLevel::PayToWitnessTaproot(w) => Some(Address(w.to_address())),
+            | HighLevel::PayToWitnessTaproot(w)
+            | HighLevel::PayToWitnessGeneral(w) => Some(Address(w.to_address())),
             _ => None,
         }
     }

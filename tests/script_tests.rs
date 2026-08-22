@@ -1,3 +1,4 @@
+use bitiodine_rust::bytecode::Bytecode;
 use bitiodine_rust::script::{
     bytes_to_bool, bytes_to_i32, bytes_to_u32, is_valid_pubkey, HighLevel, Script,
 };
@@ -37,6 +38,34 @@ fn test_script_taproot_recognition() {
         }
         other => panic!("Expected PayToWitnessTaproot, got {:?}", other),
     }
+}
+
+#[test]
+fn test_script_general_witness_recognition() {
+    // General SegWit (e.g. version 2 with 4 bytes payload: OP_2 04 <4 bytes>)
+    let script_bytes = [0x52, 0x04, 0x01, 0x02, 0x03, 0x04];
+    let script = Script::new(&script_bytes, 1650000000, 750000);
+    match script.to_highlevel() {
+        HighLevel::PayToWitnessGeneral(w) => {
+            assert_eq!(w.version().to_u8(), 2);
+        }
+        other => panic!("Expected PayToWitnessGeneral, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_cltv_and_csv_opcodes() {
+    let mut slice_cltv = &[0xb1u8][..];
+    assert_eq!(
+        Bytecode::read(&mut slice_cltv, 400000).unwrap(),
+        Bytecode::OP_CHECKLOCKTIMEVERIFY
+    );
+
+    let mut slice_csv = &[0xb2u8][..];
+    assert_eq!(
+        Bytecode::read(&mut slice_csv, 450000).unwrap(),
+        Bytecode::OP_CHECKSEQUENCEVERIFY
+    );
 }
 
 #[test]

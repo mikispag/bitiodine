@@ -11,6 +11,7 @@ pub enum HighLevel<'a> {
     PayToWitnessPubkeyHash(WitnessProgram),
     PayToWitnessScriptHash(WitnessProgram),
     PayToWitnessTaproot(WitnessProgram),
+    PayToWitnessGeneral(WitnessProgram),
     PayToMultisig(u32, Vec<&'a [u8]>),
     PayToScriptHash(&'a [u8; 20]),
     DataOutput(&'a [u8]),
@@ -69,20 +70,28 @@ impl<'a> Script<'a> {
         skipped_iter.skip_nops();
         let skipped_slice = skipped_iter.slice;
 
+        // Check for SegWit v0-v16 Witness Programs (BIP-141 / BIP-341 / BIP-350)
+        // Format: OP_n <push len 2..40> <data>
+        if self.timestamp >= 1503539857 && skipped_slice.len() >= 4 && skipped_slice.len() <= 42 {
+            let first = skipped_slice[0];
+            let push_len = skipped_slice[1] as usize;
+            if (first == 0x00 || (0x51..=0x60).contains(&first))
+                && skipped_slice.len() == 2 + push_len
+            {
+                if let Ok(w) = WitnessProgram::from_scriptpubkey(skipped_slice, Network::Bitcoin) {
+                    match (first, push_len) {
+                        (0x00, 20) => return HighLevel::PayToWitnessPubkeyHash(w),
+                        (0x00, 32) => return HighLevel::PayToWitnessScriptHash(w),
+                        (0x51, 32) => return HighLevel::PayToWitnessTaproot(w),
+                        _ => return HighLevel::PayToWitnessGeneral(w),
+                    }
+                }
+            }
+        }
+
         match skipped_slice.len() {
             0 => {
                 return HighLevel::Donation;
-            }
-            22 => {
-                if self.timestamp >= 1503539857 && self.slice[..2] == [0x00, 0x14] {
-                    return match WitnessProgram::from_scriptpubkey(
-                        &self.slice[..22],
-                        Network::Bitcoin,
-                    ) {
-                        Ok(w) => HighLevel::PayToWitnessPubkeyHash(w),
-                        Err(_) => HighLevel::Invalid,
-                    };
-                }
             }
             23 => {
                 if skipped_slice[..2] == [0xa6, 0x14] && skipped_slice[22] == 0x87 {
@@ -120,28 +129,6 @@ impl<'a> Script<'a> {
                 {
                     let pkh: &'a [u8; 20] = skipped_slice[3..23].try_into().unwrap();
                     return HighLevel::PayToPubkeyHash(pkh);
-                }
-            }
-            34 => {
-                if self.timestamp >= 1503539857 {
-                    if self.slice[..2] == [0x00, 0x20] {
-                        return match WitnessProgram::from_scriptpubkey(
-                            &self.slice[..34],
-                            Network::Bitcoin,
-                        ) {
-                            Ok(w) => HighLevel::PayToWitnessScriptHash(w),
-                            Err(_) => HighLevel::Invalid,
-                        };
-                    } else if self.slice[..2] == [0x51, 0x20] {
-                        // Taproot (SegWit v1 / BIP-341)
-                        return match WitnessProgram::from_scriptpubkey(
-                            &self.slice[..34],
-                            Network::Bitcoin,
-                        ) {
-                            Ok(w) => HighLevel::PayToWitnessTaproot(w),
-                            Err(_) => HighLevel::Invalid,
-                        };
-                    }
                 }
             }
             35 => {
