@@ -1,5 +1,5 @@
 [package]
-name = "bitiodine-rust"
+name = "bitiodine"
 version = "0.1.0"
 authors = ["Michele Spagnuolo <mikispag@gmail.com>"]
 edition = "2021"

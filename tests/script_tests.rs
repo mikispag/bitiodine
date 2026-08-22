@@ -1,5 +1,5 @@
-use bitiodine_rust::bytecode::Bytecode;
-use bitiodine_rust::script::{
+use bitiodine::bytecode::Bytecode;
+use bitiodine::script::{
     bytes_to_bool, bytes_to_i32, bytes_to_u32, is_valid_pubkey, HighLevel, Script,
 };
 

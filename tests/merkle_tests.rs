@@ -1,5 +1,5 @@
-use bitiodine_rust::hash::Hash;
-use bitiodine_rust::merkle::MerkleHasher;
+use bitiodine::hash::Hash;
+use bitiodine::merkle::MerkleHasher;
 
 #[test]
 fn test_merkle_hasher_single_tx() {

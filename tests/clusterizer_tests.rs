@@ -1,4 +1,4 @@
-use bitiodine_rust::visitors::clusterizer::DisjointSet;
+use bitiodine::visitors::clusterizer::DisjointSet;
 
 #[test]
 fn test_disjoint_set_union_find() {

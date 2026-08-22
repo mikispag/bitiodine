@@ -5,11 +5,11 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-use bitiodine_rust::visitors::{
+use bitiodine::visitors::{
     BlockChainVisitor, Clusterizer, DataOutputFinder, DonationFinder, DumpAddresses, DumpBalances,
     DumpTxHashes, MerkleVisitor,
 };
-use bitiodine_rust::BlockChain;
+use bitiodine::BlockChain;
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {

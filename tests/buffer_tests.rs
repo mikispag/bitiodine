@@ -1,4 +1,4 @@
-use bitiodine_rust::buffer_operations::{read_array, read_slice, read_u16, read_u8, read_var_int};
+use bitiodine::buffer_operations::{read_array, read_slice, read_u16, read_u8, read_var_int};
 
 #[test]
 fn test_read_u8_u16_u32_u64() {

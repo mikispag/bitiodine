@@ -1,5 +1,5 @@
-use bitiodine_rust::hash::{Hash, ZERO_HASH};
-use bitiodine_rust::hash160::Hash160;
+use bitiodine::hash::{Hash, ZERO_HASH};
+use bitiodine::hash160::Hash160;
 
 #[test]
 fn test_hash_display_and_from_pretty() {

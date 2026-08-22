@@ -63,7 +63,7 @@ Requires a stable Rust toolchain (1.75 or later).
 cargo build --release
 ```
 
-The optimized executable will be located at `target/release/bitiodine-rust`.
+The optimized executable will be located at `target/release/bitiodine`.
 
 ---
 
@@ -72,7 +72,7 @@ The optimized executable will be located at `target/release/bitiodine-rust`.
 ```text
 A high-performance Bitcoin blockchain parser and address clusterizer in Rust.
 
-Usage: bitiodine-rust [OPTIONS]
+Usage: bitiodine [OPTIONS]
 
 Options:
   -b, --blocks-dir <BLOCKS_DIR>  Path to the bitcoind blocks directory [default: ~/.bitcoin/blocks]
@@ -101,24 +101,24 @@ Options:
 
 **Run address clusterizer against default bitcoin directory:**
 ```bash
-./target/release/bitiodine-rust -o clusters.csv
+./target/release/bitiodine -o clusters.csv
 ```
 
 **Dump address balances from a custom blocks path with debug logging:**
 ```bash
-./target/release/bitiodine-rust -b /var/lib/bitcoind/blocks -a dump-balances -o balances.csv -v
+./target/release/bitiodine -b /var/lib/bitcoind/blocks -a dump-balances -o balances.csv -v
 ```
 
 **Find OP_RETURN data payloads:**
 ```bash
-./target/release/bitiodine-rust -b /var/lib/bitcoind/blocks -a dataoutput-finder
+./target/release/bitiodine -b /var/lib/bitcoind/blocks -a dataoutput-finder
 ```
 
 ---
 
 ## Architecture
 
-BitIodine is structured as a library (`bitiodine_rust`) and a CLI application:
+BitIodine is structured as a library (`bitiodine`) and a CLI application:
 
 - **`blockchain`**: Handles disk discovery, memory-mapping of `blk*.dat` files, block sequencing, and chain split/reorg resolution.
 - **`block` & `header`**: Zero-copy block framing and 80-byte header deserialization (version, previous block hash, Merkle root, timestamp, bits, nonce).

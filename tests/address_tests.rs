@@ -1,5 +1,5 @@
-use bitiodine_rust::address::Address;
-use bitiodine_rust::hash160::Hash160;
+use bitiodine::address::Address;
+use bitiodine::hash160::Hash160;
 
 #[test]
 fn test_address_generation_p2pkh() {
