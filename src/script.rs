@@ -9,9 +9,10 @@ pub enum HighLevel<'a> {
     PayToPubkey(&'a [u8]),
     PayToPubkeyHash(&'a [u8; 20]),
     PayToWitnessPubkeyHash(WitnessProgram),
+    PayToWitnessScriptHash(WitnessProgram),
+    PayToWitnessTaproot(WitnessProgram),
     PayToMultisig(u32, Vec<&'a [u8]>),
     PayToScriptHash(&'a [u8; 20]),
-    PayToWitnessScriptHash(WitnessProgram),
     DataOutput(&'a [u8]),
     Challenge(ChallengeType<'a>),
     Unknown(Script<'a>),
@@ -122,14 +123,25 @@ impl<'a> Script<'a> {
                 }
             }
             34 => {
-                if self.timestamp >= 1503539857 && self.slice[..2] == [0x00, 0x20] {
-                    return match WitnessProgram::from_scriptpubkey(
-                        &self.slice[..34],
-                        Network::Bitcoin,
-                    ) {
-                        Ok(w) => HighLevel::PayToWitnessScriptHash(w),
-                        Err(_) => HighLevel::Invalid,
-                    };
+                if self.timestamp >= 1503539857 {
+                    if self.slice[..2] == [0x00, 0x20] {
+                        return match WitnessProgram::from_scriptpubkey(
+                            &self.slice[..34],
+                            Network::Bitcoin,
+                        ) {
+                            Ok(w) => HighLevel::PayToWitnessScriptHash(w),
+                            Err(_) => HighLevel::Invalid,
+                        };
+                    } else if self.slice[..2] == [0x51, 0x20] {
+                        // Taproot (SegWit v1 / BIP-341)
+                        return match WitnessProgram::from_scriptpubkey(
+                            &self.slice[..34],
+                            Network::Bitcoin,
+                        ) {
+                            Ok(w) => HighLevel::PayToWitnessTaproot(w),
+                            Err(_) => HighLevel::Invalid,
+                        };
+                    }
                 }
             }
             35 => {
@@ -359,25 +371,27 @@ impl<'a> ScriptIter<'a> {
     }
 }
 
+/// Parses a Bitcoin Script stack number (CScriptNum) as a little-endian signed-magnitude integer.
 pub fn bytes_to_i32(slice: &[u8]) -> ParseResult<i32> {
     if slice.is_empty() {
         return Ok(0);
     }
-
-    let neg = slice[0] & 0x80 != 0;
-
-    let mut res: u32 = (slice[0] & 0x7f) as u32;
-
-    for b in &slice[1..] {
-        if res & 0xff000000 != 0 {
-            return Err(ParseError::Invalid);
-        }
-        res = (res << 8) | (*b as u32);
+    if slice.len() > 4 {
+        return Err(ParseError::Invalid);
     }
 
-    assert_eq!(res & 0x80000000, 0);
-    if neg {
-        Ok(-(res as i32))
+    let mut res: u32 = 0;
+    for (i, &b) in slice.iter().enumerate() {
+        res |= (b as u32) << (8 * i);
+    }
+
+    let last_byte = *slice.last().unwrap();
+    let is_negative = (last_byte & 0x80) != 0;
+
+    if is_negative {
+        let mask = 0x80u32 << (8 * (slice.len() - 1));
+        let abs_val = res & !mask;
+        Ok(-(abs_val as i32))
     } else {
         Ok(res as i32)
     }
