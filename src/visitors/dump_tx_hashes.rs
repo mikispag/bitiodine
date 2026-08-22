@@ -1,5 +1,9 @@
-use preamble::*;
+use crate::block::Block;
+use crate::error::Result;
+use crate::transactions::Transaction;
+use crate::visitors::BlockChainVisitor;
 
+#[derive(Default)]
 pub struct DumpTxHashes;
 
 impl<'a> BlockChainVisitor<'a> for DumpTxHashes {
@@ -9,11 +13,11 @@ impl<'a> BlockChainVisitor<'a> for DumpTxHashes {
     type DoneItem = ();
 
     fn new() -> Self {
-        Self {}
+        Self
     }
 
     fn visit_block_begin(&mut self, block: Block<'a>, height: u64) -> Self::BlockItem {
-        if height > 480000 && height % 1000 == 0 {
+        if height > 480_000 && height % 1000 == 0 {
             println!(
                 "Block {} - {} transactions",
                 height,
@@ -31,8 +35,8 @@ impl<'a> BlockChainVisitor<'a> for DumpTxHashes {
         block_item: &mut Self::BlockItem,
         _tx_item: Self::TransactionItem,
     ) {
-        if *block_item > 480000 && *block_item % 1000 == 0 {
-            println!("Transaction {}", tx.txid.to_string());
+        if *block_item > 480_000 && *block_item % 1000 == 0 {
+            println!("Transaction {}", tx.txid);
         }
     }
 

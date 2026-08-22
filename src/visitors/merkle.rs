@@ -1,6 +1,11 @@
-use merkle::MerkleHasher;
-use preamble::*;
+use crate::block::Block;
+use crate::error::Result;
+use crate::hash::Hash;
+use crate::merkle::MerkleHasher;
+use crate::transactions::Transaction;
+use crate::visitors::BlockChainVisitor;
 
+#[derive(Default)]
 pub struct MerkleVisitor;
 
 impl<'a> BlockChainVisitor<'a> for MerkleVisitor {
@@ -10,7 +15,7 @@ impl<'a> BlockChainVisitor<'a> for MerkleVisitor {
     type DoneItem = ();
 
     fn new() -> Self {
-        Self {}
+        Self
     }
 
     fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) -> MerkleHasher {

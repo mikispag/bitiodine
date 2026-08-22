@@ -1,5 +1,10 @@
-use preamble::*;
+use crate::block::Block;
+use crate::error::Result;
+use crate::script::HighLevel;
+use crate::transactions::TransactionOutput;
+use crate::visitors::BlockChainVisitor;
 
+#[derive(Default)]
 pub struct DonationFinder;
 
 impl<'a> BlockChainVisitor<'a> for DonationFinder {
@@ -9,7 +14,7 @@ impl<'a> BlockChainVisitor<'a> for DonationFinder {
     type DoneItem = ();
 
     fn new() -> Self {
-        Self {}
+        Self
     }
 
     fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}

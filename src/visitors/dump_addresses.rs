@@ -1,5 +1,12 @@
-use preamble::*;
+use crate::address::Address;
+use crate::block::Block;
+use crate::error::Result;
+use crate::hash160::Hash160;
+use crate::script::HighLevel;
+use crate::transactions::TransactionOutput;
+use crate::visitors::BlockChainVisitor;
 
+#[derive(Default)]
 pub struct DumpAddresses;
 
 impl<'a> BlockChainVisitor<'a> for DumpAddresses {
@@ -9,7 +16,7 @@ impl<'a> BlockChainVisitor<'a> for DumpAddresses {
     type DoneItem = ();
 
     fn new() -> Self {
-        Self {}
+        Self
     }
 
     fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}
@@ -40,11 +47,10 @@ impl<'a> BlockChainVisitor<'a> for DumpAddresses {
             _ => None,
         };
 
-        if addresses.is_some() {
-            for address in addresses.unwrap() {
+        if let Some(addresses) = addresses {
+            for address in addresses {
                 println!("{}", address);
             }
-            Some(());
         }
         None
     }

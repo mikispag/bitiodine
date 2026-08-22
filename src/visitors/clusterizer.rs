@@ -1,28 +1,44 @@
-use preamble::*;
-use std::collections::HashSet;
+use log::info;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::result;
+use std::io::Write;
+
+use crate::address::Address;
+use crate::block::Block;
+use crate::error::Result;
+use crate::hash::ZERO_HASH;
+use crate::hash160::Hash160;
+use crate::script::HighLevel;
+use crate::transactions::{Transaction, TransactionInput, TransactionOutput};
+use crate::visitors::BlockChainVisitor;
 
 pub struct Clusterizer {
-    clusters: DisjointSet<Address>,
+    pub clusters: DisjointSet<Address>,
 }
 
-/// Tarjan's Union-Find data structure.
+/// Tarjan's Union-Find data structure with union-by-rank and path compression.
 pub struct DisjointSet<T: Clone + Hash + Eq> {
     set_size: usize,
-    parent: Vec<usize>,
-    rank: Vec<usize>,
-    map: HashMap<T, usize>, // Each T entry is mapped onto a usize tag.
+    pub parent: Vec<usize>,
+    pub rank: Vec<usize>,
+    pub map: HashMap<T, usize>, // Each T entry is mapped onto a usize tag.
 }
 
-const OUTPUT_STRING_CAPACITY: usize = 100usize * 234000000usize;
+impl<T> Default for DisjointSet<T>
+where
+    T: Clone + Hash + Eq,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<T> DisjointSet<T>
 where
     T: Clone + Hash + Eq,
 {
     pub fn new() -> Self {
-        const CAPACITY: usize = 1000000;
+        const CAPACITY: usize = 1_000_000;
         DisjointSet {
             set_size: 0,
             parent: Vec::with_capacity(CAPACITY),
@@ -31,8 +47,21 @@ where
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        DisjointSet {
+            set_size: 0,
+            parent: Vec::with_capacity(capacity),
+            rank: Vec::with_capacity(capacity),
+            map: HashMap::with_capacity(capacity),
+        }
+    }
+
     pub fn size(&self) -> usize {
         self.set_size
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.set_size == 0
     }
 
     pub fn make_set(&mut self, x: T) {
@@ -40,90 +69,75 @@ where
             return;
         }
 
-        let len = &mut self.set_size;
-        self.map.insert(x, *len);
-        self.parent.push(*len);
+        let len = self.set_size;
+        self.map.insert(x, len);
+        self.parent.push(len);
         self.rank.push(0);
 
-        *len += 1;
+        self.set_size += 1;
     }
 
-    /// Returns Some(num), num is the tag of subset in which x is.
-    /// If x is not in the data structure, it returns None.
+    /// Returns Some(tag), the root tag of the subset containing x.
+    /// If x is not in the data structure, returns None.
     pub fn find(&mut self, x: &T) -> Option<usize> {
-        let pos: usize;
-        match self.map.get(x) {
-            Some(p) => {
-                pos = *p;
-            }
-            None => return None,
-        }
-
-        let ret = DisjointSet::<T>::find_internal(&mut self.parent, pos);
-        Some(ret)
+        let pos = *self.map.get(x)?;
+        Some(Self::find_internal(&mut self.parent, pos))
     }
 
-    /// Implements path compression.
-    fn find_internal(p: &mut Vec<usize>, n: usize) -> usize {
-        if p[n] != n {
-            let parent = p[n];
-            p[n] = DisjointSet::<T>::find_internal(p, parent);
-            p[n]
-        } else {
-            n
+    /// Iterative two-pass path compression (prevents stack overflow).
+    fn find_internal(p: &mut [usize], mut n: usize) -> usize {
+        let mut root = n;
+        while root != p[root] {
+            root = p[root];
         }
+        while n != root {
+            let parent = p[n];
+            p[n] = root;
+            n = parent;
+        }
+        root
     }
 
     /// Union the subsets to which x and y belong.
-    /// If it returns Ok<u32>, it is the tag for unified subset.
-    /// If it returns Err(), at least one of x and y is not in the disjoint-set.
-    pub fn union(&mut self, x: &T, y: &T) -> result::Result<usize, ()> {
-        let x_root;
-        let y_root;
-        let x_rank;
-        let y_rank;
-        match self.find(&x) {
-            Some(x_r) => {
-                x_root = x_r;
-                x_rank = self.rank[x_root];
-            }
-            None => {
-                return Err(());
-            }
-        }
+    /// Returns Some(tag) of the unified subset, or None if x or y is not in the set.
+    pub fn union(&mut self, x: &T, y: &T) -> Option<usize> {
+        let x_root = self.find(x)?;
+        let y_root = self.find(y)?;
 
-        match self.find(&y) {
-            Some(y_r) => {
-                y_root = y_r;
-                y_rank = self.rank[y_root];
-            }
-            None => {
-                return Err(());
-            }
-        }
-
-        // Implements union-by-rank optimization.
         if x_root == y_root {
-            return Ok(x_root);
+            return Some(x_root);
         }
+
+        let x_rank = self.rank[x_root];
+        let y_rank = self.rank[y_root];
 
         if x_rank > y_rank {
             self.parent[y_root] = x_root;
-            return Ok(x_root);
+            Some(x_root)
         } else {
             self.parent[x_root] = y_root;
             if x_rank == y_rank {
                 self.rank[y_root] += 1;
             }
-            return Ok(y_root);
+            Some(y_root)
         }
     }
 
-    /// Forces all laziness, updating every tag.
+    /// Forces all laziness, updating every tag to its canonical root.
     pub fn finalize(&mut self) {
         for i in 0..self.set_size {
-            DisjointSet::<T>::find_internal(&mut self.parent, i);
+            Self::find_internal(&mut self.parent, i);
         }
+    }
+}
+
+impl Clusterizer {
+    /// Writes clusters as CSV (`<address>,<cluster_id>`) directly to a writer.
+    pub fn write_csv<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        for (address, tag) in &self.clusters.map {
+            writeln!(writer, "{},{}", address, self.clusters.parent[*tag])?;
+        }
+        Ok(())
     }
 }
 
@@ -159,11 +173,8 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         if txin.prev_hash == &ZERO_HASH {
             return;
         }
-        match output_item {
-            Some(address) => {
-                tx_item.insert(address);
-            }
-            None => {}
+        if let Some(address) = output_item {
+            tx_item.insert(address);
         }
     }
 
@@ -197,11 +208,11 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         if tx_item.len() > 1 {
             let mut tx_inputs_iter = tx_item.iter();
             let mut last_address = tx_inputs_iter.next().unwrap();
-            self.clusters.make_set(last_address.to_owned());
+            self.clusters.make_set(last_address.clone());
             for address in tx_inputs_iter {
-                self.clusters.make_set(address.to_owned());
+                self.clusters.make_set(address.clone());
                 let _ = self.clusters.union(last_address, address);
-                last_address = &address;
+                last_address = address;
             }
         }
     }
@@ -209,12 +220,12 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
     fn done(&mut self) -> Result<(usize, String)> {
         self.clusters.finalize();
 
-        let mut output_string = String::with_capacity(OUTPUT_STRING_CAPACITY);
+        let mut output_string = String::new();
         for (address, tag) in &self.clusters.map {
             output_string.push_str(&format!("{},{}\n", address, self.clusters.parent[*tag]));
         }
 
-        info!("{} clusters generated.", self.clusters.size());
+        info!("{} addresses clustered.", self.clusters.size());
         Ok((self.clusters.size(), output_string))
     }
 }

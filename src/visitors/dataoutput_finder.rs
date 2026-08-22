@@ -1,5 +1,10 @@
-use preamble::*;
+use crate::block::Block;
+use crate::error::Result;
+use crate::script::HighLevel;
+use crate::transactions::TransactionOutput;
+use crate::visitors::BlockChainVisitor;
 
+#[derive(Default)]
 pub struct DataOutputFinder;
 
 impl<'a> BlockChainVisitor<'a> for DataOutputFinder {
@@ -9,7 +14,7 @@ impl<'a> BlockChainVisitor<'a> for DataOutputFinder {
     type DoneItem = ();
 
     fn new() -> Self {
-        Self {}
+        Self
     }
 
     fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}
@@ -23,7 +28,7 @@ impl<'a> BlockChainVisitor<'a> for DataOutputFinder {
         _transaction_item: &mut (),
     ) -> Option<Self::OutputItem> {
         match txout.script.to_highlevel() {
-            HighLevel::DataOutput(data) => Some(String::from_utf8_lossy(&data).into_owned()),
+            HighLevel::DataOutput(data) => Some(String::from_utf8_lossy(data).into_owned()),
             _ => None,
         }
     }

@@ -1,4 +1,6 @@
-use preamble::*;
+use crate::block::Block;
+use crate::error::Result;
+use crate::transactions::{Transaction, TransactionInput, TransactionOutput};
 
 pub mod clusterizer;
 pub mod dataoutput_finder;
@@ -7,6 +9,14 @@ pub mod dump_addresses;
 pub mod dump_balances;
 pub mod dump_tx_hashes;
 pub mod merkle;
+
+pub use clusterizer::Clusterizer;
+pub use dataoutput_finder::DataOutputFinder;
+pub use donation_finder::DonationFinder;
+pub use dump_addresses::DumpAddresses;
+pub use dump_balances::DumpBalances;
+pub use dump_tx_hashes::DumpTxHashes;
+pub use merkle::MerkleVisitor;
 
 pub trait BlockChainVisitor<'a> {
     type BlockItem;
