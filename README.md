@@ -118,7 +118,122 @@ Options:
 
 ## Architecture
 
-BitIodine is structured as a library (`bitiodine`) and a CLI application:
+BitIodine is structured as a library (`bitiodine`) and a CLI application.
+
+### High-Level System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Storage["1. Bitcoin Core Storage"]
+        BLK["blk*.dat Block Files<br/>128 MB Raw Disk Chunks"]
+    end
+
+    subgraph Core["2. BitIodine Zero-Copy Engine"]
+        MMAP["memmap2 Memory Mapping"]
+        SEQ["Block Sequencing & Orphan Reassembly<br/>In-memory skipped blocks table"]
+        FRAMER["Block & Header Framing<br/>80-byte header, Merkle root, timestamp"]
+        TXP["Transaction & Witness Deserializer<br/>txid and wtxid computation"]
+        SCRIPT["Script & Bytecode Engine<br/>P2PK, P2PKH, P2SH, SegWit v0-v16, Taproot, OP_RETURN"]
+        UTXO["OutputMap UTXO Tracker<br/>HashMap of Unspent Output Items"]
+    end
+
+    subgraph Visitors["3. Pluggable Visitor Engine (BlockChainVisitor)"]
+        CLUST["Clusterizer<br/>Union-Find DisjointSet with CoinJoin Filter"]
+        BAL["DumpBalances<br/>Balance Accounting Engine"]
+        ADDR["DumpAddresses<br/>Address Extractor"]
+        MERK["MerkleVisitor<br/>Header Merkle Root Verifier"]
+        DATA["DataOutputFinder<br/>OP_RETURN Payload Extractor"]
+    end
+
+    subgraph Sinks["4. Output Sinks"]
+        CSV["CSV Files<br/>clusters.csv / balances.csv"]
+        STDOUT["Stdout Stream"]
+        LOGS["Logger & Metrics"]
+    end
+
+    BLK --> MMAP
+    MMAP --> SEQ
+    SEQ --> FRAMER
+    FRAMER --> TXP
+    TXP --> SCRIPT
+    TXP <--> UTXO
+    TXP --> Visitors
+
+    CLUST --> CSV
+    BAL --> CSV
+    ADDR --> STDOUT
+    MERK --> LOGS
+    DATA --> STDOUT
+```
+
+### Visitor Event Lifecycle & Traversal Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant BC as BlockChain Engine
+    participant V as BlockChainVisitor
+    participant UTXO as OutputMap (UTXO State)
+
+    Note over BC,V: For each block in sequential height order
+    BC->>V: visit_block_begin(block, height)
+    Note over BC,V: For each transaction in block
+    BC->>V: visit_transaction_begin(block_item)
+
+    loop For each Transaction Input
+        BC->>UTXO: Lookup & consume spent output (prev_hash, prev_index)
+        UTXO-->>BC: Some(spent_output_item)
+        BC->>V: visit_transaction_input(txin, block_item, tx_item, spent_output_item)
+    end
+
+    loop For each Transaction Output
+        BC->>V: visit_transaction_output(txout, block_item, tx_item)
+        V-->>BC: Option<OutputItem> (e.g. Address, Value)
+        BC->>UTXO: Store new unspent output item
+    end
+
+    BC->>V: visit_transaction_end(tx, block_item, tx_item)
+    BC->>V: visit_block_end(block, height, block_item)
+
+    Note over BC,V: When all block files have been processed
+    BC->>V: done()
+```
+
+### Address Clustering Pipeline (`Clusterizer`)
+
+```mermaid
+flowchart LR
+    subgraph Inputs["Multi-Input Transaction"]
+        IN1["Address A"]
+        IN2["Address B"]
+        IN3["Address C"]
+    end
+
+    subgraph Filter["Heuristic Filters"]
+        CJ{"CoinJoin Check<br/>≥3 equal output amounts?"}
+    end
+
+    subgraph UnionFind["DisjointSet (Union-Find)"]
+        MAKE["make_set()"]
+        FIND["find() with 2-Pass<br/>Path Compression"]
+        UNION["union() by Rank"]
+        FIN["finalize()<br/>Canonical Roots"]
+    end
+
+    subgraph Output["Output Clusters"]
+        CLUSTER["Cluster Root Tag:<br/>{Address A, Address B, Address C}"]
+    end
+
+    Inputs --> CJ
+    CJ -- "Yes (Mixer)" --> SKIP["Skip Transaction<br/>(Preserve Independence)"]
+    CJ -- "No (Co-Spend)" --> MAKE
+    MAKE --> FIND
+    FIND --> UNION
+    UNION --> FIN
+    FIN --> CLUSTER
+```
+
+### Module Breakdown
 
 - **`blockchain`**: Handles disk discovery, memory-mapping of `blk*.dat` files, block sequencing, and chain split/reorg resolution.
 - **`block` & `header`**: Zero-copy block framing and 80-byte header deserialization (version, previous block hash, Merkle root, timestamp, bits, nonce).
