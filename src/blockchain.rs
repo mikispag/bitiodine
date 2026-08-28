@@ -16,8 +16,33 @@ pub struct BlockChain {
     maps: Vec<Mmap>,
 }
 
+fn apply_xor(buf: &mut [u8], key: &[u8]) {
+    if key.is_empty() || key.iter().all(|&b| b == 0) {
+        return;
+    }
+    if key.len() == 8 {
+        let key_u64 = u64::from_ne_bytes(key.try_into().unwrap());
+        let (prefix, chunks, suffix) = unsafe { buf.align_to_mut::<u64>() };
+        for (i, b) in prefix.iter_mut().enumerate() {
+            *b ^= key[i % 8];
+        }
+        for chunk in chunks.iter_mut() {
+            *chunk ^= key_u64;
+        }
+        let offset = (prefix.len() + chunks.len() * 8) % 8;
+        for (i, b) in suffix.iter_mut().enumerate() {
+            *b ^= key[(offset + i) % 8];
+        }
+    } else {
+        for (i, b) in buf.iter_mut().enumerate() {
+            *b ^= key[i % key.len()];
+        }
+    }
+}
+
 impl BlockChain {
     /// Reads and memory-maps all `blk*.dat` Bitcoin block files from `blocks_dir`.
+    /// Automatically handles XOR-obfuscated blocks (`xor.dat`) used by modern Bitcoin Core.
     ///
     /// # Safety
     /// The caller must ensure that the block files are not concurrently mutated or truncated
@@ -26,6 +51,12 @@ impl BlockChain {
         let mut maps: Vec<Mmap> = Vec::new();
         let mut n: usize = 0;
         let blocks_dir_path = blocks_dir.as_ref();
+
+        let xor_key = std::fs::read(blocks_dir_path.join("xor.dat")).ok();
+        let has_xor = matches!(&xor_key, Some(k) if !k.is_empty() && k.iter().any(|&b| b != 0));
+        if has_xor {
+            info!("Detected XOR obfuscation key in xor.dat");
+        }
 
         loop {
             let blk_path = blocks_dir_path.join(format!("blk{:05}.dat", n));
@@ -36,12 +67,33 @@ impl BlockChain {
                     if f.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
                         continue;
                     }
-                    match Mmap::map(&f) {
-                        Ok(m) => {
-                            maps.push(m);
+                    if let Some(key) = xor_key
+                        .as_ref()
+                        .filter(|k| !k.is_empty() && k.iter().any(|&b| b != 0))
+                    {
+                        match memmap2::MmapOptions::new().map_copy(&f) {
+                            Ok(mut m) => {
+                                let non_zero_len =
+                                    m.iter().rposition(|&b| b != 0).map_or(0, |idx| idx + 1);
+                                if non_zero_len == 0 {
+                                    continue;
+                                }
+                                apply_xor(&mut m[..non_zero_len], key);
+                                match m.make_read_only() {
+                                    Ok(m_ro) => maps.push(m_ro),
+                                    Err(_) => break,
+                                }
+                            }
+                            Err(_) => break,
                         }
-                        Err(_) => {
-                            break;
+                    } else {
+                        match Mmap::map(&f) {
+                            Ok(m) => {
+                                maps.push(m);
+                            }
+                            Err(_) => {
+                                break;
+                            }
                         }
                     }
                 }
@@ -204,6 +256,17 @@ impl BlockChain {
                 &mut output_items,
                 visitor,
             )?;
+        }
+
+        if let Some(lb) = last_block.take() {
+            lb.walk(visitor, height, &mut output_items)?;
+            height += 1;
+        }
+
+        while let Some(block) = skipped.remove(&goal_prev_hash) {
+            block.walk(visitor, height, &mut output_items)?;
+            height += 1;
+            goal_prev_hash = block.header().cur_hash();
         }
 
         Ok((height, goal_prev_hash, output_items))

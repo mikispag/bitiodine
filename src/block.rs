@@ -32,7 +32,10 @@ impl<'a> Block<'a> {
             let block_magic = read_u32(slice)?;
             match block_magic {
                 // Incomplete blk file
-                0x00 => Ok(None),
+                0x00 => {
+                    *slice = &[];
+                    Ok(None)
+                }
                 m if m == magic => {
                     let block_len = read_u32(slice)? as usize;
                     if block_len < 80 {
