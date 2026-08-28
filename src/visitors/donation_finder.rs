@@ -7,7 +7,7 @@ use crate::visitors::BlockChainVisitor;
 #[derive(Default)]
 pub struct DonationFinder;
 
-impl<'a> BlockChainVisitor<'a> for DonationFinder {
+impl BlockChainVisitor for DonationFinder {
     type BlockItem = ();
     type TransactionItem = ();
     type OutputItem = ();
@@ -17,11 +17,11 @@ impl<'a> BlockChainVisitor<'a> for DonationFinder {
         Self
     }
 
-    fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}
+    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) {}
 
     fn visit_transaction_begin(&mut self, _hasher: &mut ()) {}
 
-    fn visit_transaction_output(
+    fn visit_transaction_output<'a>(
         &mut self,
         txout: TransactionOutput<'a>,
         _block_item: &mut (),

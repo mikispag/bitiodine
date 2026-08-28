@@ -40,7 +40,7 @@ impl DumpBalances {
     }
 }
 
-impl<'a> BlockChainVisitor<'a> for DumpBalances {
+impl BlockChainVisitor for DumpBalances {
     type BlockItem = ();
     type TransactionItem = ();
     type OutputItem = (Address, Option<Hash160>, i64);
@@ -52,11 +52,11 @@ impl<'a> BlockChainVisitor<'a> for DumpBalances {
         }
     }
 
-    fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}
+    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) {}
 
     fn visit_transaction_begin(&mut self, _hasher: &mut ()) {}
 
-    fn visit_transaction_input(
+    fn visit_transaction_input<'a>(
         &mut self,
         txin: TransactionInput<'a>,
         _block_item: &mut Self::BlockItem,
@@ -79,7 +79,7 @@ impl<'a> BlockChainVisitor<'a> for DumpBalances {
         }
     }
 
-    fn visit_transaction_output(
+    fn visit_transaction_output<'a>(
         &mut self,
         txout: TransactionOutput<'a>,
         _block_item: &mut (),
@@ -114,11 +114,11 @@ impl<'a> BlockChainVisitor<'a> for DumpBalances {
                     .or_insert(0) += value;
                 Some((address, Some(hash160), value))
             }
-            HighLevel::PayToWitnessPubkeyHash(w)
-            | HighLevel::PayToWitnessScriptHash(w)
-            | HighLevel::PayToWitnessTaproot(w)
-            | HighLevel::PayToWitnessGeneral(w) => {
-                let address = Address(w.to_address());
+            HighLevel::PayToWitnessPubkeyHash(ref w)
+            | HighLevel::PayToWitnessScriptHash(ref w)
+            | HighLevel::PayToWitnessTaproot(ref w)
+            | HighLevel::PayToWitnessGeneral(ref w) => {
+                let address = Address::from_witness_program(w);
                 *self.balances.entry((address.clone(), None)).or_insert(0) += value;
                 Some((address, None, value))
             }

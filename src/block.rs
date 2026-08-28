@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-use vec_map::VecMap;
-
+use crate::blockchain::OutputMap;
 use crate::buffer_operations::{read_array, read_slice, read_u32};
 use crate::error::{ParseError, ParseResult, Result};
-use crate::hash::Hash;
 use crate::header::BlockHeader;
 use crate::transactions::Transactions;
 use crate::visitors::BlockChainVisitor;
@@ -58,11 +55,11 @@ impl<'a> Block<'a> {
         Transactions::new(&self.0[80..])
     }
 
-    pub fn walk<V: BlockChainVisitor<'a>>(
+    pub fn walk<V: BlockChainVisitor>(
         &self,
         visitor: &mut V,
         height: u64,
-        output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>,
+        output_items: &mut OutputMap<V::OutputItem>,
     ) -> ParseResult<()> {
         let header = self.header();
         let mut block_item = visitor.visit_block_begin(*self, height);

@@ -38,10 +38,10 @@ pub struct TransactionClusterState {
 
 /// Tarjan's Union-Find data structure with union-by-rank and path compression.
 pub struct DisjointSet<T: Clone + Hash + Eq> {
-    set_size: usize,
-    pub parent: Vec<usize>,
-    pub rank: Vec<usize>,
-    pub map: HashMap<T, usize>, // Each T entry is mapped onto a usize tag.
+    set_size: u32,
+    pub parent: Vec<u32>,
+    pub rank: Vec<u8>,
+    pub map: HashMap<T, u32>, // Each T entry is mapped onto a u32 tag.
 }
 
 impl<T> Default for DisjointSet<T>
@@ -77,7 +77,7 @@ where
     }
 
     pub fn size(&self) -> usize {
-        self.set_size
+        self.set_size as usize
     }
 
     pub fn is_empty(&self) -> bool {
@@ -85,7 +85,7 @@ where
     }
 
     /// Registers element x in the disjoint set if not present, returning its tag.
-    pub fn make_set(&mut self, x: T) -> usize {
+    pub fn make_set(&mut self, x: T) -> u32 {
         match self.map.entry(x) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
@@ -101,20 +101,20 @@ where
 
     /// Returns Some(tag), the root tag of the subset containing x.
     /// If x is not in the data structure, returns None.
-    pub fn find(&mut self, x: &T) -> Option<usize> {
+    pub fn find(&mut self, x: &T) -> Option<u32> {
         let pos = *self.map.get(x)?;
         Some(Self::find_internal(&mut self.parent, pos))
     }
 
     /// Iterative two-pass path compression (prevents stack overflow).
-    fn find_internal(p: &mut [usize], mut n: usize) -> usize {
+    fn find_internal(p: &mut [u32], mut n: u32) -> u32 {
         let mut root = n;
-        while root != p[root] {
-            root = p[root];
+        while root != p[root as usize] {
+            root = p[root as usize];
         }
         while n != root {
-            let parent = p[n];
-            p[n] = root;
+            let parent = p[n as usize];
+            p[n as usize] = root;
             n = parent;
         }
         root
@@ -122,7 +122,7 @@ where
 
     /// Union the subsets to which x and y belong.
     /// Returns Some(tag) of the unified subset, or None if x or y is not in the set.
-    pub fn union(&mut self, x: &T, y: &T) -> Option<usize> {
+    pub fn union(&mut self, x: &T, y: &T) -> Option<u32> {
         let x_root = self.find(x)?;
         let y_root = self.find(y)?;
 
@@ -130,16 +130,16 @@ where
             return Some(x_root);
         }
 
-        let x_rank = self.rank[x_root];
-        let y_rank = self.rank[y_root];
+        let x_rank = self.rank[x_root as usize];
+        let y_rank = self.rank[y_root as usize];
 
         if x_rank > y_rank {
-            self.parent[y_root] = x_root;
+            self.parent[y_root as usize] = x_root;
             Some(x_root)
         } else {
-            self.parent[x_root] = y_root;
+            self.parent[x_root as usize] = y_root;
             if x_rank == y_rank {
-                self.rank[y_root] += 1;
+                self.rank[y_root as usize] = self.rank[y_root as usize].saturating_add(1);
             }
             Some(y_root)
         }
@@ -155,11 +155,11 @@ where
 
 impl Clusterizer {
     /// Builds a deterministic mapping from each disjoint-set root tag to the lexicographically smallest address in that cluster.
-    pub fn canonical_representatives(&self) -> HashMap<usize, &Address> {
-        let mut root_to_min: HashMap<usize, &Address> =
+    pub fn canonical_representatives(&self) -> HashMap<u32, &Address> {
+        let mut root_to_min: HashMap<u32, &Address> =
             HashMap::with_capacity(self.clusters.size().min(self.clusters.map.len()));
         for (address, &tag) in &self.clusters.map {
-            let root = self.clusters.parent[tag];
+            let root = self.clusters.parent[tag as usize];
             root_to_min
                 .entry(root)
                 .and_modify(|min| {
@@ -182,7 +182,7 @@ impl Clusterizer {
             .map
             .iter()
             .map(|(address, &tag)| {
-                let root = self.clusters.parent[tag];
+                let root = self.clusters.parent[tag as usize];
                 (address, root_to_min[&root])
             })
             .collect();
@@ -215,7 +215,7 @@ fn is_coinjoin(output_values: &[u64]) -> bool {
     false
 }
 
-impl<'a> BlockChainVisitor<'a> for Clusterizer {
+impl BlockChainVisitor for Clusterizer {
     type BlockItem = ();
     type TransactionItem = TransactionClusterState;
     type OutputItem = Address;
@@ -227,7 +227,7 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         }
     }
 
-    fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}
+    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) {}
 
     fn visit_transaction_begin(
         &mut self,
@@ -239,7 +239,7 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         }
     }
 
-    fn visit_transaction_input(
+    fn visit_transaction_input<'a>(
         &mut self,
         txin: TransactionInput<'a>,
         _block_item: &mut Self::BlockItem,
@@ -255,7 +255,7 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
         }
     }
 
-    fn visit_transaction_output(
+    fn visit_transaction_output<'a>(
         &mut self,
         txout: TransactionOutput<'a>,
         _block_item: &mut (),
@@ -270,15 +270,15 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
             HighLevel::PayToScriptHash(pkh) => {
                 Some(Address::from_hash160(Hash160::from_slice(pkh), 0x05))
             }
-            HighLevel::PayToWitnessPubkeyHash(w)
-            | HighLevel::PayToWitnessScriptHash(w)
-            | HighLevel::PayToWitnessTaproot(w)
-            | HighLevel::PayToWitnessGeneral(w) => Some(Address(w.to_address())),
+            HighLevel::PayToWitnessPubkeyHash(ref w)
+            | HighLevel::PayToWitnessScriptHash(ref w)
+            | HighLevel::PayToWitnessTaproot(ref w)
+            | HighLevel::PayToWitnessGeneral(ref w) => Some(Address::from_witness_program(w)),
             _ => None,
         }
     }
 
-    fn visit_transaction_end(
+    fn visit_transaction_end<'a>(
         &mut self,
         _tx: Transaction<'a>,
         _block_item: &mut Self::BlockItem,

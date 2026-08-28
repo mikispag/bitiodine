@@ -1,19 +1,21 @@
 use log::{debug, info};
 use memmap2::Mmap;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fs::File;
-use std::path::Path;
-use vec_map::VecMap;
+use std::path::{Path, PathBuf};
 
 use crate::block::Block;
 use crate::error::ParseResult;
 use crate::hash::{Hash, ZERO_HASH};
 use crate::visitors::BlockChainVisitor;
 
-pub type OutputMap<T> = HashMap<Hash, VecMap<T>>;
+pub type OutputMap<T> = HashMap<Hash, SmallVec<[(u32, T); 2]>>;
 
 pub struct BlockChain {
-    maps: Vec<Mmap>,
+    blocks_dir: PathBuf,
+    num_files: usize,
+    xor_key: Option<Vec<u8>>,
 }
 
 fn apply_xor(buf: &mut [u8], key: &[u8]) {
@@ -41,93 +43,60 @@ fn apply_xor(buf: &mut [u8], key: &[u8]) {
 }
 
 impl BlockChain {
-    /// Reads and memory-maps all `blk*.dat` Bitcoin block files from `blocks_dir`.
-    /// Automatically handles XOR-obfuscated blocks (`xor.dat`) used by modern Bitcoin Core.
+    /// Discovers all `blk*.dat` Bitcoin block files in `blocks_dir` and reads `xor.dat` if present.
+    /// Files are memory-mapped on-demand one file at a time during `walk()` to bound RAM usage.
     ///
     /// # Safety
     /// The caller must ensure that the block files are not concurrently mutated or truncated
     /// by another process (such as `bitcoind`) while mapped, as that could cause undefined behavior.
     pub unsafe fn read<P: AsRef<Path>>(blocks_dir: P) -> BlockChain {
-        let mut maps: Vec<Mmap> = Vec::new();
-        let mut n: usize = 0;
-        let blocks_dir_path = blocks_dir.as_ref();
-
-        let xor_key = std::fs::read(blocks_dir_path.join("xor.dat")).ok();
-        let has_xor = matches!(&xor_key, Some(k) if !k.is_empty() && k.iter().any(|&b| b != 0));
-        if has_xor {
+        let blocks_dir_path = blocks_dir.as_ref().to_path_buf();
+        let xor_key = std::fs::read(blocks_dir_path.join("xor.dat"))
+            .ok()
+            .filter(|k| !k.is_empty() && k.iter().any(|&b| b != 0));
+        if xor_key.is_some() {
             info!("Detected XOR obfuscation key in xor.dat");
         }
 
+        let mut num_files = 0;
         loop {
-            let blk_path = blocks_dir_path.join(format!("blk{:05}.dat", n));
-            match File::open(&blk_path) {
-                Ok(f) => {
-                    n += 1;
-                    // Skip empty/0-byte preallocated files
-                    if f.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
-                        continue;
-                    }
-                    if let Some(key) = xor_key
-                        .as_ref()
-                        .filter(|k| !k.is_empty() && k.iter().any(|&b| b != 0))
-                    {
-                        match memmap2::MmapOptions::new().map_copy(&f) {
-                            Ok(mut m) => {
-                                let non_zero_len =
-                                    m.iter().rposition(|&b| b != 0).map_or(0, |idx| idx + 1);
-                                if non_zero_len == 0 {
-                                    continue;
-                                }
-                                apply_xor(&mut m[..non_zero_len], key);
-                                match m.make_read_only() {
-                                    Ok(m_ro) => maps.push(m_ro),
-                                    Err(_) => break,
-                                }
-                            }
-                            Err(_) => break,
-                        }
-                    } else {
-                        match Mmap::map(&f) {
-                            Ok(m) => {
-                                maps.push(m);
-                            }
-                            Err(_) => {
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(_) => {
-                    break;
-                }
-            };
+            let blk_path = blocks_dir_path.join(format!("blk{:05}.dat", num_files));
+            if !blk_path.exists() {
+                break;
+            }
+            num_files += 1;
         }
 
-        BlockChain { maps }
+        BlockChain {
+            blocks_dir: blocks_dir_path,
+            num_files,
+            xor_key,
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.maps.len()
+        self.num_files
     }
 
     pub fn is_empty(&self) -> bool {
-        self.maps.is_empty()
+        self.num_files == 0
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn walk_slice<'a, V: BlockChainVisitor<'a>>(
-        &'a self,
-        mut slice: &'a [u8],
+    fn walk_slice<V: BlockChainVisitor>(
+        &self,
+        mut slice: &[u8],
         goal_prev_hash: &mut Hash,
-        last_block: &mut Option<Block<'a>>,
+        last_block_buf: &mut Option<Vec<u8>>,
         height: &mut u64,
-        skipped: &mut HashMap<Hash, Block<'a>>,
+        skipped: &mut HashMap<Hash, Vec<u8>>,
         output_items: &mut OutputMap<V::OutputItem>,
         visitor: &mut V,
     ) -> ParseResult<()> {
         while !slice.is_empty() {
             if skipped.contains_key(goal_prev_hash) {
-                if let Some(lb) = last_block.take() {
+                if let Some(lb_bytes) = last_block_buf.take() {
+                    let lb = Block(&lb_bytes);
                     lb.walk(visitor, *height, output_items)?;
                     debug!(
                         "(rewind - pre-step) Block {} - {} -> {}",
@@ -137,7 +106,8 @@ impl BlockChain {
                     );
                     *height += 1;
                 }
-                while let Some(block) = skipped.remove(goal_prev_hash) {
+                while let Some(block_bytes) = skipped.remove(goal_prev_hash) {
+                    let block = Block(&block_bytes);
                     block.walk(visitor, *height, output_items)?;
                     debug!(
                         "(rewind) Block {} - {} -> {}",
@@ -167,53 +137,51 @@ impl BlockChain {
             );
 
             if block.header().prev_hash() != goal_prev_hash {
-                skipped.insert(*block.header().prev_hash(), block);
+                skipped.insert(*block.header().prev_hash(), block.0.to_vec());
 
-                if last_block.is_some()
-                    && block.header().prev_hash() == last_block.unwrap().header().prev_hash()
-                {
-                    debug!(
-                        "Chain split detected: {} <-> {}. Detecting main chain and orphan.",
-                        last_block.unwrap().header().cur_hash(),
-                        block.header().cur_hash()
-                    );
+                if let Some(ref lb_bytes) = last_block_buf {
+                    let lb = Block(lb_bytes);
+                    if block.header().prev_hash() == lb.header().prev_hash() {
+                        debug!(
+                            "Chain split detected: {} <-> {}. Detecting main chain and orphan.",
+                            lb.header().cur_hash(),
+                            block.header().cur_hash()
+                        );
 
-                    let first_orphan = last_block.unwrap();
-                    let second_orphan = block;
+                        let first_orphan_bytes = lb_bytes.clone();
+                        let second_orphan_bytes = block.0.to_vec();
+                        let first_cur_hash = Block(&first_orphan_bytes).header().cur_hash();
+                        let second_cur_hash = Block(&second_orphan_bytes).header().cur_hash();
 
-                    loop {
-                        let block = match Block::read(&mut slice)? {
-                            Some(block) => block,
-                            None => {
-                                assert_eq!(slice.len(), 0);
+                        loop {
+                            let block = match Block::read(&mut slice)? {
+                                Some(block) => block,
+                                None => {
+                                    assert_eq!(slice.len(), 0);
+                                    break;
+                                }
+                            };
+                            skipped.insert(*block.header().prev_hash(), block.0.to_vec());
+                            if block.header().prev_hash() == &first_cur_hash {
+                                // First wins
+                                debug!("Chain split: {} is on the main chain!", first_cur_hash);
                                 break;
                             }
-                        };
-                        skipped.insert(*block.header().prev_hash(), block);
-                        if block.header().prev_hash() == &first_orphan.header().cur_hash() {
-                            // First wins
-                            debug!(
-                                "Chain split: {} is on the main chain!",
-                                first_orphan.header().cur_hash()
-                            );
-                            break;
-                        }
-                        if block.header().prev_hash() == &second_orphan.header().cur_hash() {
-                            // Second wins
-                            debug!(
-                                "Chain split: {} is on the main chain!",
-                                second_orphan.header().cur_hash()
-                            );
-                            *goal_prev_hash = second_orphan.header().cur_hash();
-                            *last_block = Some(second_orphan);
-                            break;
+                            if block.header().prev_hash() == &second_cur_hash {
+                                // Second wins
+                                debug!("Chain split: {} is on the main chain!", second_cur_hash);
+                                *goal_prev_hash = second_cur_hash;
+                                *last_block_buf = Some(second_orphan_bytes);
+                                break;
+                            }
                         }
                     }
                 }
                 continue;
             }
 
-            if let Some(lb) = last_block.take() {
+            if let Some(lb_bytes) = last_block_buf.take() {
+                let lb = Block(&lb_bytes);
                 lb.walk(visitor, *height, output_items)?;
                 debug!(
                     "(last_block) Block {} - {} -> {}",
@@ -225,32 +193,66 @@ impl BlockChain {
             }
 
             *goal_prev_hash = block.header().cur_hash();
-            *last_block = Some(block);
+            *last_block_buf = Some(block.0.to_vec());
         }
 
         Ok(())
     }
 
-    pub fn walk<'a, V: BlockChainVisitor<'a>>(
-        &'a self,
+    pub fn walk<V: BlockChainVisitor>(
+        &self,
         visitor: &mut V,
     ) -> ParseResult<(u64, Hash, OutputMap<V::OutputItem>)> {
-        let mut skipped: HashMap<Hash, Block> = Default::default();
+        let mut skipped: HashMap<Hash, Vec<u8>> = Default::default();
         let mut output_items: OutputMap<V::OutputItem> = Default::default();
         let mut goal_prev_hash: Hash = ZERO_HASH;
-        let mut last_block: Option<Block> = None;
+        let mut last_block_buf: Option<Vec<u8>> = None;
         let mut height = 0;
 
-        for (n, map) in self.maps.iter().enumerate() {
+        for n in 0..self.num_files {
             info!(
                 "Parsing the blockchain: block file {}/{}...",
                 n,
-                self.maps.len().saturating_sub(1)
+                self.num_files.saturating_sub(1)
             );
+
+            let blk_path = self.blocks_dir.join(format!("blk{:05}.dat", n));
+            let file = match File::open(&blk_path) {
+                Ok(f) => f,
+                Err(_) => break,
+            };
+
+            let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+            if file_len == 0 {
+                continue;
+            }
+
+            let mmap = if let Some(ref key) = self.xor_key {
+                match unsafe { memmap2::MmapOptions::new().map_copy(&file) } {
+                    Ok(mut m) => {
+                        let non_zero_len = m.iter().rposition(|&b| b != 0).map_or(0, |idx| idx + 1);
+                        if non_zero_len == 0 {
+                            continue;
+                        }
+                        apply_xor(&mut m[..non_zero_len], key);
+                        match m.make_read_only() {
+                            Ok(m_ro) => m_ro,
+                            Err(_) => break,
+                        }
+                    }
+                    Err(_) => break,
+                }
+            } else {
+                match unsafe { Mmap::map(&file) } {
+                    Ok(m) => m,
+                    Err(_) => break,
+                }
+            };
+
             self.walk_slice(
-                map,
+                &mmap,
                 &mut goal_prev_hash,
-                &mut last_block,
+                &mut last_block_buf,
                 &mut height,
                 &mut skipped,
                 &mut output_items,
@@ -258,12 +260,14 @@ impl BlockChain {
             )?;
         }
 
-        if let Some(lb) = last_block.take() {
+        if let Some(lb_bytes) = last_block_buf.take() {
+            let lb = Block(&lb_bytes);
             lb.walk(visitor, height, &mut output_items)?;
             height += 1;
         }
 
-        while let Some(block) = skipped.remove(&goal_prev_hash) {
+        while let Some(block_bytes) = skipped.remove(&goal_prev_hash) {
+            let block = Block(&block_bytes);
             block.walk(visitor, height, &mut output_items)?;
             height += 1;
             goal_prev_hash = block.header().cur_hash();

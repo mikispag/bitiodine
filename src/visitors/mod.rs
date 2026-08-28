@@ -18,7 +18,7 @@ pub use dump_balances::DumpBalances;
 pub use dump_tx_hashes::DumpTxHashes;
 pub use merkle::MerkleVisitor;
 
-pub trait BlockChainVisitor<'a> {
+pub trait BlockChainVisitor {
     type BlockItem;
     type TransactionItem;
     type OutputItem;
@@ -26,14 +26,20 @@ pub trait BlockChainVisitor<'a> {
 
     fn new() -> Self;
 
-    fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) -> Self::BlockItem;
-    fn visit_block_end(&mut self, _block: Block<'a>, _height: u64, _block_item: Self::BlockItem) {}
+    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) -> Self::BlockItem;
+    fn visit_block_end<'a>(
+        &mut self,
+        _block: Block<'a>,
+        _height: u64,
+        _block_item: Self::BlockItem,
+    ) {
+    }
 
     fn visit_transaction_begin(
         &mut self,
         _block_item: &mut Self::BlockItem,
     ) -> Self::TransactionItem;
-    fn visit_transaction_input(
+    fn visit_transaction_input<'a>(
         &mut self,
         _txin: TransactionInput<'a>,
         _block_item: &mut Self::BlockItem,
@@ -42,7 +48,7 @@ pub trait BlockChainVisitor<'a> {
     ) {
     }
 
-    fn visit_transaction_output(
+    fn visit_transaction_output<'a>(
         &mut self,
         _txout: TransactionOutput<'a>,
         _block_item: &mut Self::BlockItem,
@@ -50,7 +56,7 @@ pub trait BlockChainVisitor<'a> {
     ) -> Option<Self::OutputItem> {
         None
     }
-    fn visit_transaction_end(
+    fn visit_transaction_end<'a>(
         &mut self,
         _tx: Transaction<'a>,
         _block_item: &mut Self::BlockItem,

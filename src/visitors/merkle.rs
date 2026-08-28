@@ -7,7 +7,7 @@ use crate::visitors::BlockChainVisitor;
 #[derive(Default)]
 pub struct MerkleVisitor;
 
-impl<'a> BlockChainVisitor<'a> for MerkleVisitor {
+impl BlockChainVisitor for MerkleVisitor {
     type BlockItem = MerkleHasher;
     type TransactionItem = ();
     type OutputItem = ();
@@ -17,17 +17,17 @@ impl<'a> BlockChainVisitor<'a> for MerkleVisitor {
         Self
     }
 
-    fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) -> MerkleHasher {
+    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) -> MerkleHasher {
         Default::default()
     }
 
-    fn visit_block_end(&mut self, block: Block<'a>, _height: u64, hasher: MerkleHasher) {
+    fn visit_block_end<'a>(&mut self, block: Block<'a>, _height: u64, hasher: MerkleHasher) {
         assert_eq!(block.header().merkle_root(), &hasher.finish().unwrap());
     }
 
     fn visit_transaction_begin(&mut self, _hasher: &mut MerkleHasher) {}
 
-    fn visit_transaction_end(
+    fn visit_transaction_end<'a>(
         &mut self,
         tx: Transaction<'a>,
         hasher: &mut MerkleHasher,

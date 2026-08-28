@@ -9,7 +9,7 @@ use crate::visitors::BlockChainVisitor;
 #[derive(Default)]
 pub struct DumpAddresses;
 
-impl<'a> BlockChainVisitor<'a> for DumpAddresses {
+impl BlockChainVisitor for DumpAddresses {
     type BlockItem = ();
     type TransactionItem = ();
     type OutputItem = ();
@@ -19,11 +19,11 @@ impl<'a> BlockChainVisitor<'a> for DumpAddresses {
         Self
     }
 
-    fn visit_block_begin(&mut self, _block: Block<'a>, _height: u64) {}
+    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) {}
 
     fn visit_transaction_begin(&mut self, _block_item: &mut Self::BlockItem) {}
 
-    fn visit_transaction_output(
+    fn visit_transaction_output<'a>(
         &mut self,
         txout: TransactionOutput<'a>,
         _block_item: &mut (),
@@ -41,10 +41,10 @@ impl<'a> BlockChainVisitor<'a> for DumpAddresses {
                     .map(|pk| Address::from_pubkey(pk, 0x05))
                     .collect(),
             ),
-            HighLevel::PayToWitnessPubkeyHash(w)
-            | HighLevel::PayToWitnessScriptHash(w)
-            | HighLevel::PayToWitnessTaproot(w)
-            | HighLevel::PayToWitnessGeneral(w) => Some(vec![Address(w.to_address())]),
+            HighLevel::PayToWitnessPubkeyHash(ref w)
+            | HighLevel::PayToWitnessScriptHash(ref w)
+            | HighLevel::PayToWitnessTaproot(ref w)
+            | HighLevel::PayToWitnessGeneral(ref w) => Some(vec![Address::from_witness_program(w)]),
             _ => None,
         };
 

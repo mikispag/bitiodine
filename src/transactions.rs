@@ -1,13 +1,15 @@
 use sha2::{Digest, Sha256};
+use smallvec::SmallVec;
 use std::collections::hash_map::Entry as HashEntry;
 use std::collections::HashMap;
-use vec_map::VecMap;
 
 use crate::buffer_operations::{read_array, read_slice, read_u32, read_u64, read_u8, read_var_int};
 use crate::error::{ParseError, ParseResult, Result};
 use crate::hash::Hash;
 use crate::script::Script;
 use crate::visitors::BlockChainVisitor;
+
+pub type OutputItemList<T> = SmallVec<[(u32, T); 2]>;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Transactions<'a> {
@@ -47,13 +49,13 @@ impl<'a> Transactions<'a> {
         Ok(Transactions { count, slice })
     }
 
-    pub fn walk<V: BlockChainVisitor<'a>>(
+    pub fn walk<V: BlockChainVisitor>(
         self,
         visitor: &mut V,
         timestamp: u32,
         height: u64,
         block_item: &mut V::BlockItem,
-        output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>,
+        output_items: &mut HashMap<Hash, OutputItemList<V::OutputItem>>,
     ) -> ParseResult<()> {
         let mut slice = self.slice;
         for _ in 0..self.count {
@@ -74,13 +76,13 @@ impl<'a> Transactions<'a> {
 }
 
 impl<'a> Transaction<'a> {
-    pub fn read_and_walk<V: BlockChainVisitor<'a>>(
+    pub fn read_and_walk<V: BlockChainVisitor>(
         slice: &mut &'a [u8],
         visitor: &mut V,
         timestamp: u32,
         height: u64,
         block_item: &mut V::BlockItem,
-        output_items: &mut HashMap<Hash, VecMap<V::OutputItem>>,
+        output_items: &mut HashMap<Hash, OutputItemList<V::OutputItem>>,
     ) -> ParseResult<Transaction<'a>> {
         // Visit the raw transaction before parsing
         let mut transaction_item = visitor.visit_transaction_begin(block_item);
@@ -115,8 +117,11 @@ impl<'a> Transaction<'a> {
             let i = TransactionInput::read(slice, timestamp, height)?;
             let mut output_item = None;
             if let HashEntry::Occupied(mut occupied) = output_items.entry(*i.prev_hash) {
-                output_item = occupied.get_mut().remove(i.prev_index as usize);
-                if occupied.get().is_empty() {
+                let items = occupied.get_mut();
+                if let Some(pos) = items.iter().position(|&(idx, _)| idx == i.prev_index) {
+                    output_item = Some(items.swap_remove(pos).1);
+                }
+                if items.is_empty() {
                     occupied.remove();
                 }
             }
@@ -126,14 +131,14 @@ impl<'a> Transaction<'a> {
         // Read the outputs
         let txouts_count = read_var_int(slice)?;
 
-        let mut cur_output_items = VecMap::with_capacity(txouts_count as usize);
+        let mut cur_output_items = OutputItemList::new();
         for n in 0..txouts_count {
             let o = TransactionOutput::read(slice, timestamp, height)?;
             let output_item =
                 visitor.visit_transaction_output(o, block_item, &mut transaction_item);
 
             if let Some(output_item) = output_item {
-                cur_output_items.insert(n as usize, output_item);
+                cur_output_items.push((n as u32, output_item));
             }
         }
 
@@ -172,8 +177,6 @@ impl<'a> Transaction<'a> {
         };
 
         if !cur_output_items.is_empty() {
-            let len = cur_output_items.len();
-            cur_output_items.reserve_len_exact(len);
             output_items.insert(*Hash::from_slice(&tx_hash), cur_output_items);
         }
 

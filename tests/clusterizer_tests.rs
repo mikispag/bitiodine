@@ -49,10 +49,22 @@ fn test_clusterizer_deterministic_representatives() {
     use bitiodine::visitors::clusterizer::Clusterizer;
 
     let mut clusterizer = Clusterizer::new();
-    let addr_a = Address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa".to_string());
-    let addr_b = Address("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2".to_string());
-    let addr_c = Address("3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy".to_string());
-    let addr_d = Address("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq".to_string());
+    let addr_a = Address::Base58 {
+        version: 0x00,
+        hash: [0x11; 20],
+    };
+    let addr_b = Address::Base58 {
+        version: 0x00,
+        hash: [0x22; 20],
+    };
+    let addr_c = Address::Base58 {
+        version: 0x05,
+        hash: [0x33; 20],
+    };
+    let addr_d = Address::Base58 {
+        version: 0x05,
+        hash: [0x44; 20],
+    };
 
     clusterizer.clusters.make_set(addr_b.clone());
     clusterizer.clusters.make_set(addr_a.clone());
@@ -68,11 +80,21 @@ fn test_clusterizer_deterministic_representatives() {
     clusterizer.write_csv(&mut csv_buf).unwrap();
     let csv = String::from_utf8(csv_buf).unwrap();
 
-    let expected = "\
-1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa,1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa\n\
-1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2,1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa\n\
-3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy,3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy\n\
-bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq,3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy\n";
+    let rep_ab = if addr_a < addr_b { &addr_a } else { &addr_b };
+    let rep_cd = if addr_c < addr_d { &addr_c } else { &addr_d };
+
+    let mut expected_entries = vec![
+        (addr_a.clone(), rep_ab.clone()),
+        (addr_b.clone(), rep_ab.clone()),
+        (addr_c.clone(), rep_cd.clone()),
+        (addr_d.clone(), rep_cd.clone()),
+    ];
+    expected_entries.sort_unstable_by_key(|(a, _)| a.clone());
+
+    let mut expected = String::new();
+    for (a, rep) in expected_entries {
+        expected.push_str(&format!("{},{}\n", a, rep));
+    }
 
     assert_eq!(csv, expected);
 }

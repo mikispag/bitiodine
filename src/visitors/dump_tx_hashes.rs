@@ -6,7 +6,7 @@ use crate::visitors::BlockChainVisitor;
 #[derive(Default)]
 pub struct DumpTxHashes;
 
-impl<'a> BlockChainVisitor<'a> for DumpTxHashes {
+impl BlockChainVisitor for DumpTxHashes {
     type BlockItem = u64;
     type TransactionItem = ();
     type OutputItem = ();
@@ -16,7 +16,7 @@ impl<'a> BlockChainVisitor<'a> for DumpTxHashes {
         Self
     }
 
-    fn visit_block_begin(&mut self, block: Block<'a>, height: u64) -> Self::BlockItem {
+    fn visit_block_begin<'a>(&mut self, block: Block<'a>, height: u64) -> Self::BlockItem {
         if height > 480_000 && height % 1000 == 0 {
             println!(
                 "Block {} - {} transactions",
@@ -29,7 +29,7 @@ impl<'a> BlockChainVisitor<'a> for DumpTxHashes {
 
     fn visit_transaction_begin(&mut self, _block_item: &mut Self::BlockItem) {}
 
-    fn visit_transaction_end(
+    fn visit_transaction_end<'a>(
         &mut self,
         tx: Transaction<'a>,
         block_item: &mut Self::BlockItem,
