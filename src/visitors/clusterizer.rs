@@ -17,6 +17,20 @@ pub struct Clusterizer {
     pub clusters: DisjointSet<Address>,
 }
 
+impl Default for Clusterizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clusterizer {
+    pub fn new() -> Self {
+        Self {
+            clusters: DisjointSet::new(),
+        }
+    }
+}
+
 pub struct TransactionClusterState {
     pub input_addresses: HashSet<Address>,
     pub output_values: Vec<u64>,
@@ -140,10 +154,43 @@ where
 }
 
 impl Clusterizer {
-    /// Writes clusters as CSV (`<address>,<cluster_id>`) directly to a writer.
+    /// Builds a deterministic mapping from each disjoint-set root tag to the lexicographically smallest address in that cluster.
+    pub fn canonical_representatives(&self) -> HashMap<usize, &Address> {
+        let mut root_to_min: HashMap<usize, &Address> =
+            HashMap::with_capacity(self.clusters.size().min(self.clusters.map.len()));
+        for (address, &tag) in &self.clusters.map {
+            let root = self.clusters.parent[tag];
+            root_to_min
+                .entry(root)
+                .and_modify(|min| {
+                    if address < *min {
+                        *min = address;
+                    }
+                })
+                .or_insert(address);
+        }
+        root_to_min
+    }
+
+    /// Writes clusters as CSV (`<address>,<cluster_representative_address>`) directly to a writer,
+    /// sorted deterministically by address.
     pub fn write_csv<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        for (address, tag) in &self.clusters.map {
-            writeln!(writer, "{},{}", address, self.clusters.parent[*tag])?;
+        let root_to_min = self.canonical_representatives();
+
+        let mut entries: Vec<(&Address, &Address)> = self
+            .clusters
+            .map
+            .iter()
+            .map(|(address, &tag)| {
+                let root = self.clusters.parent[tag];
+                (address, root_to_min[&root])
+            })
+            .collect();
+
+        entries.sort_unstable_by_key(|&(addr, _)| addr);
+
+        for (address, rep) in entries {
+            writeln!(writer, "{},{}", address, rep)?;
         }
         Ok(())
     }
@@ -258,10 +305,10 @@ impl<'a> BlockChainVisitor<'a> for Clusterizer {
     fn done(&mut self) -> Result<(usize, String)> {
         self.clusters.finalize();
 
-        let mut output_string = String::new();
-        for (address, tag) in &self.clusters.map {
-            output_string.push_str(&format!("{},{}\n", address, self.clusters.parent[*tag]));
-        }
+        let mut output_bytes = Vec::new();
+        self.write_csv(&mut output_bytes)
+            .map_err(|_| crate::error::EofError)?;
+        let output_string = String::from_utf8(output_bytes).unwrap();
 
         info!("{} addresses clustered.", self.clusters.size());
         Ok((self.clusters.size(), output_string))

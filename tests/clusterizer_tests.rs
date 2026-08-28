@@ -42,3 +42,37 @@ fn test_disjoint_set_union_find() {
     ds.finalize();
     assert_eq!(ds.find(&"addr1"), ds.find(&"addr4"));
 }
+
+#[test]
+fn test_clusterizer_deterministic_representatives() {
+    use bitiodine::address::Address;
+    use bitiodine::visitors::clusterizer::Clusterizer;
+
+    let mut clusterizer = Clusterizer::new();
+    let addr_a = Address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa".to_string());
+    let addr_b = Address("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2".to_string());
+    let addr_c = Address("3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy".to_string());
+    let addr_d = Address("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq".to_string());
+
+    clusterizer.clusters.make_set(addr_b.clone());
+    clusterizer.clusters.make_set(addr_a.clone());
+    clusterizer.clusters.union(&addr_b, &addr_a);
+
+    clusterizer.clusters.make_set(addr_d.clone());
+    clusterizer.clusters.make_set(addr_c.clone());
+    clusterizer.clusters.union(&addr_d, &addr_c);
+
+    clusterizer.clusters.finalize();
+
+    let mut csv_buf = Vec::new();
+    clusterizer.write_csv(&mut csv_buf).unwrap();
+    let csv = String::from_utf8(csv_buf).unwrap();
+
+    let expected = "\
+1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa,1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa\n\
+1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2,1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa\n\
+3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy,3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy\n\
+bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq,3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy\n";
+
+    assert_eq!(csv, expected);
+}
