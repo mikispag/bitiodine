@@ -1,15 +1,14 @@
 use sha2::{Digest, Sha256};
-use smallvec::SmallVec;
 use std::collections::hash_map::Entry as HashEntry;
-use std::collections::HashMap;
 
+use crate::blockchain::OutputMap;
 use crate::buffer_operations::{read_array, read_slice, read_u32, read_u64, read_u8, read_var_int};
 use crate::error::{ParseError, ParseResult, Result};
 use crate::hash::Hash;
 use crate::script::Script;
 use crate::visitors::BlockChainVisitor;
 
-pub type OutputItemList<T> = SmallVec<[(u32, T); 1]>;
+pub type OutputItemList<T> = smallvec::SmallVec<[(u32, T); 1]>;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Transactions<'a> {
@@ -55,7 +54,7 @@ impl<'a> Transactions<'a> {
         timestamp: u32,
         height: u64,
         block_item: &mut V::BlockItem,
-        output_items: &mut HashMap<Hash, OutputItemList<V::OutputItem>>,
+        output_items: &mut OutputMap<V::OutputItem>,
     ) -> ParseResult<()> {
         let mut slice = self.slice;
         for _ in 0..self.count {
@@ -82,7 +81,7 @@ impl<'a> Transaction<'a> {
         timestamp: u32,
         height: u64,
         block_item: &mut V::BlockItem,
-        output_items: &mut HashMap<Hash, OutputItemList<V::OutputItem>>,
+        output_items: &mut OutputMap<V::OutputItem>,
     ) -> ParseResult<Transaction<'a>> {
         // Visit the raw transaction before parsing
         let mut transaction_item = visitor.visit_transaction_begin(block_item);
@@ -155,7 +154,7 @@ impl<'a> Transaction<'a> {
                 let item_count = read_var_int(slice)?;
                 for _ in 0..item_count {
                     let witness_len = read_var_int(slice)? as usize;
-                    let _witness = read_slice(slice, witness_len);
+                    read_slice(slice, witness_len)?;
                 }
             }
         }

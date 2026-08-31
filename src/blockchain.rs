@@ -1,6 +1,5 @@
 use log::{debug, info};
 use memmap2::Mmap;
-use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -11,7 +10,7 @@ use crate::error::ParseResult;
 use crate::hash::{Hash, ZERO_HASH};
 use crate::visitors::BlockChainVisitor;
 
-pub type OutputMap<T> = HashMap<Hash, SmallVec<[(u32, T); 1]>>;
+pub type OutputMap<T> = HashMap<Hash, crate::transactions::OutputItemList<T>>;
 
 pub struct BlockChain {
     blocks_dir: PathBuf,
@@ -32,9 +31,9 @@ fn apply_xor(buf: &mut [u8], key: &[u8]) {
         for chunk in chunks.iter_mut() {
             *chunk ^= key_u64;
         }
-        let offset = (prefix.len() + chunks.len() * 8) % 8;
+        // prefix.len() < 8 by construction, so the key offset into the suffix is just prefix.len()
         for (i, b) in suffix.iter_mut().enumerate() {
-            *b ^= key[(offset + i) % 8];
+            *b ^= key[(prefix.len() + i) % 8];
         }
     } else {
         for (i, b) in buf.iter_mut().enumerate() {
@@ -218,8 +217,8 @@ impl BlockChain {
         for n in 0..self.num_files {
             info!(
                 "Parsing the blockchain: block file {}/{}...",
-                n,
-                self.num_files.saturating_sub(1)
+                n + 1,
+                self.num_files
             );
 
             let blk_path = self.blocks_dir.join(format!("blk{:05}.dat", n));
@@ -234,7 +233,6 @@ impl BlockChain {
             }
 
             if let Some(ref key) = self.xor_key {
-                let file_len = file_len as usize;
                 if scratch.len() < file_len {
                     scratch.resize(file_len, 0);
                 }

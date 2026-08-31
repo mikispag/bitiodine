@@ -108,10 +108,8 @@ impl<'a> Script<'a> {
                 }
             }
             25 => {
-                if skipped_slice[..3] == [0x76, 0xa9, 0x14]
-                    && (skipped_slice[23..] == [0x88, 0xac]
-                        || skipped_slice[23..] == [0x88, 0xac, 0x61])
-                {
+                // The 3-byte terminator variant (0x61 suffix) is handled by the 26-byte arm below.
+                if skipped_slice[..3] == [0x76, 0xa9, 0x14] && skipped_slice[23..] == [0x88, 0xac] {
                     let pkh: &'a [u8; 20] = skipped_slice[3..23].try_into().unwrap();
                     return HighLevel::PayToPubkeyHash(pkh);
                 }

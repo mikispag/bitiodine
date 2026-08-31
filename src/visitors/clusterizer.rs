@@ -36,7 +36,7 @@ impl Clusterizer {
 
 pub struct TransactionClusterState {
     pub input_addresses: SmallVec<[CompactAddress; 8]>,
-    pub output_values: Vec<u64>,
+    pub output_values: SmallVec<[u64; 4]>,
 }
 
 /// Tarjan's Union-Find data structure with union-by-rank and path compression.
@@ -185,18 +185,22 @@ impl Clusterizer {
 
 /// Detects whether a transaction is a CoinJoin mixer transaction (e.g. Wasabi/Samourai/Whirlpool)
 /// based on presence of 3 or more identical non-zero output amounts.
-fn is_coinjoin(output_values: &[u64]) -> bool {
+/// Sorts `output_values` in place; the slice is not used afterwards, so no heap
+/// allocation or hashing is needed on this hot path.
+fn is_coinjoin(output_values: &mut [u64]) -> bool {
     if output_values.len() < 3 {
         return false;
     }
-    let mut counts: HashMap<u64, usize> = HashMap::with_capacity(output_values.len());
-    for &val in output_values {
-        if val > 0 {
-            let count = counts.entry(val).or_insert(0);
-            *count += 1;
-            if *count >= 3 {
+    output_values.sort_unstable();
+    let mut run = 1;
+    for pair in output_values.windows(2) {
+        if pair[0] == pair[1] && pair[0] != 0 {
+            run += 1;
+            if run >= 3 {
                 return true;
             }
+        } else {
+            run = 1;
         }
     }
     false
@@ -222,7 +226,7 @@ impl BlockChainVisitor for Clusterizer {
     ) -> Self::TransactionItem {
         TransactionClusterState {
             input_addresses: SmallVec::new(),
-            output_values: Vec::with_capacity(16),
+            output_values: SmallVec::new(),
         }
     }
 
@@ -273,10 +277,10 @@ impl BlockChainVisitor for Clusterizer {
         &mut self,
         _tx: Transaction<'a>,
         _block_item: &mut Self::BlockItem,
-        tx_item: Self::TransactionItem,
+        mut tx_item: Self::TransactionItem,
     ) {
         // Skip CoinJoin mixer transactions to avoid false-positive super-clusters
-        if is_coinjoin(&tx_item.output_values) {
+        if is_coinjoin(&mut tx_item.output_values) {
             return;
         }
 
@@ -297,5 +301,20 @@ impl BlockChainVisitor for Clusterizer {
         self.clusters.finalize();
         info!("{} addresses clustered.", self.clusters.size());
         Ok((self.clusters.size(), String::new()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_coinjoin;
+
+    #[test]
+    fn test_is_coinjoin() {
+        assert!(!is_coinjoin(&mut []));
+        assert!(!is_coinjoin(&mut [1, 1]));
+        assert!(!is_coinjoin(&mut [0, 0, 0])); // zero-value outputs never count
+        assert!(!is_coinjoin(&mut [1, 1, 2, 2]));
+        assert!(is_coinjoin(&mut [100, 100, 100]));
+        assert!(is_coinjoin(&mut [3, 0, 3, 1, 3, 2])); // unsorted, zeros mixed in
     }
 }
