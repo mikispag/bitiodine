@@ -13,7 +13,7 @@ pub mod script;
 pub mod transactions;
 pub mod visitors;
 
-pub use address::Address;
+pub use address::{Address, CompactAddress};
 pub use block::Block;
 pub use blockchain::BlockChain;
 pub use bytecode::Bytecode;

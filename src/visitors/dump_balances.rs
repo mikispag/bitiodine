@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use crate::address::Address;
+use foldhash::fast::RandomState;
+
+use crate::address::CompactAddress;
 use crate::block::Block;
 use crate::error::Result;
 use crate::hash::ZERO_HASH;
@@ -11,7 +13,7 @@ use crate::transactions::{TransactionInput, TransactionOutput};
 use crate::visitors::BlockChainVisitor;
 
 pub struct DumpBalances {
-    pub balances: HashMap<(Address, Option<Hash160>), i64>,
+    pub balances: HashMap<CompactAddress, i64, RandomState>,
 }
 
 impl Default for DumpBalances {
@@ -22,17 +24,15 @@ impl Default for DumpBalances {
 
 impl DumpBalances {
     pub fn write_csv<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        for (address_tuple, balance) in &self.balances {
+        for (address, balance) in &self.balances {
             if *balance == 0 {
                 continue;
             }
-            let address = &address_tuple.0;
-            let hash160 = address_tuple.1.unwrap_or_default();
             writeln!(
                 writer,
                 "{:.8},{},{}",
                 (*balance as f64) * 1e-8,
-                hash160,
+                address.hash160(),
                 address
             )?;
         }
@@ -43,12 +43,12 @@ impl DumpBalances {
 impl BlockChainVisitor for DumpBalances {
     type BlockItem = ();
     type TransactionItem = ();
-    type OutputItem = (Address, Option<Hash160>, i64);
+    type OutputItem = (CompactAddress, i64);
     type DoneItem = (usize, String);
 
     fn new() -> Self {
         Self {
-            balances: HashMap::with_capacity(1_000_000),
+            balances: HashMap::with_capacity_and_hasher(1_000_000, Default::default()),
         }
     }
 
@@ -68,13 +68,12 @@ impl BlockChainVisitor for DumpBalances {
             return;
         }
 
-        if let Some((address, hash160, value)) = output_item {
-            let key = (address, hash160);
-            let prev_balance = self.balances.get(&key).copied().unwrap_or(0);
+        if let Some((address, value)) = output_item {
+            let prev_balance = self.balances.get(&address).copied().unwrap_or(0);
             if prev_balance == value {
-                self.balances.remove(&key);
+                self.balances.remove(&address);
             } else {
-                *self.balances.entry(key).or_insert(0) -= value;
+                *self.balances.entry(address).or_insert(0) -= value;
             }
         }
     }
@@ -89,38 +88,29 @@ impl BlockChainVisitor for DumpBalances {
         match txout.script.to_highlevel() {
             HighLevel::PayToPubkeyHash(pkh) => {
                 let hash160 = Hash160::from_slice(pkh);
-                let address = Address::from_hash160(hash160, 0x00);
-                *self
-                    .balances
-                    .entry((address.clone(), Some(*hash160)))
-                    .or_insert(0) += value;
-                Some((address, Some(*hash160), value))
+                let address = CompactAddress::from_hash160(hash160, 0x00);
+                *self.balances.entry(address).or_insert(0) += value;
+                Some((address, value))
             }
             HighLevel::PayToScriptHash(pkh) => {
                 let hash160 = Hash160::from_slice(pkh);
-                let address = Address::from_hash160(hash160, 0x05);
-                *self
-                    .balances
-                    .entry((address.clone(), Some(*hash160)))
-                    .or_insert(0) += value;
-                Some((address, Some(*hash160), value))
+                let address = CompactAddress::from_hash160(hash160, 0x05);
+                *self.balances.entry(address).or_insert(0) += value;
+                Some((address, value))
             }
             HighLevel::PayToPubkey(pk) => {
                 let hash160 = Hash160::from_data(pk);
-                let address = Address::from_hash160(&hash160, 0x00);
-                *self
-                    .balances
-                    .entry((address.clone(), Some(hash160)))
-                    .or_insert(0) += value;
-                Some((address, Some(hash160), value))
+                let address = CompactAddress::from_hash160(&hash160, 0x00);
+                *self.balances.entry(address).or_insert(0) += value;
+                Some((address, value))
             }
             HighLevel::PayToWitnessPubkeyHash(ref w)
             | HighLevel::PayToWitnessScriptHash(ref w)
             | HighLevel::PayToWitnessTaproot(ref w)
             | HighLevel::PayToWitnessGeneral(ref w) => {
-                let address = Address::from_witness_program(w);
-                *self.balances.entry((address.clone(), None)).or_insert(0) += value;
-                Some((address, None, value))
+                let address = CompactAddress::from_witness_program(w);
+                *self.balances.entry(address).or_insert(0) += value;
+                Some((address, value))
             }
             _ => None,
         }

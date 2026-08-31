@@ -45,33 +45,22 @@ fn test_disjoint_set_union_find() {
 
 #[test]
 fn test_clusterizer_deterministic_representatives() {
-    use bitiodine::address::Address;
+    use bitiodine::address::CompactAddress;
+    use bitiodine::hash160::Hash160;
     use bitiodine::visitors::clusterizer::Clusterizer;
 
     let mut clusterizer = Clusterizer::new();
-    let addr_a = Address::Base58 {
-        version: 0x00,
-        hash: [0x11; 20],
-    };
-    let addr_b = Address::Base58 {
-        version: 0x00,
-        hash: [0x22; 20],
-    };
-    let addr_c = Address::Base58 {
-        version: 0x05,
-        hash: [0x33; 20],
-    };
-    let addr_d = Address::Base58 {
-        version: 0x05,
-        hash: [0x44; 20],
-    };
+    let addr_a = CompactAddress::from_hash160(&Hash160([0x11; 20]), 0x00);
+    let addr_b = CompactAddress::from_hash160(&Hash160([0x22; 20]), 0x00);
+    let addr_c = CompactAddress::from_hash160(&Hash160([0x33; 20]), 0x05);
+    let addr_d = CompactAddress::from_hash160(&Hash160([0x44; 20]), 0x05);
 
-    clusterizer.clusters.make_set(addr_b.clone());
-    clusterizer.clusters.make_set(addr_a.clone());
+    clusterizer.clusters.make_set(addr_b);
+    clusterizer.clusters.make_set(addr_a);
     clusterizer.clusters.union(&addr_b, &addr_a);
 
-    clusterizer.clusters.make_set(addr_d.clone());
-    clusterizer.clusters.make_set(addr_c.clone());
+    clusterizer.clusters.make_set(addr_d);
+    clusterizer.clusters.make_set(addr_c);
     clusterizer.clusters.union(&addr_d, &addr_c);
 
     clusterizer.clusters.finalize();
@@ -80,14 +69,14 @@ fn test_clusterizer_deterministic_representatives() {
     clusterizer.write_csv(&mut csv_buf).unwrap();
     let csv = String::from_utf8(csv_buf).unwrap();
 
-    let rep_ab = if addr_a < addr_b { &addr_a } else { &addr_b };
-    let rep_cd = if addr_c < addr_d { &addr_c } else { &addr_d };
+    let rep_ab = if addr_a < addr_b { addr_a } else { addr_b };
+    let rep_cd = if addr_c < addr_d { addr_c } else { addr_d };
 
     let expected_entries = vec![
-        (addr_a.clone(), rep_ab.clone()),
-        (addr_b.clone(), rep_ab.clone()),
-        (addr_c.clone(), rep_cd.clone()),
-        (addr_d.clone(), rep_cd.clone()),
+        (addr_a, rep_ab),
+        (addr_b, rep_ab),
+        (addr_c, rep_cd),
+        (addr_d, rep_cd),
     ];
 
     // Row order is map-iteration order (unsorted); compare content as a set.

@@ -1,10 +1,13 @@
 use log::info;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::Write;
 
-use crate::address::Address;
+use foldhash::fast::RandomState;
+use smallvec::SmallVec;
+
+use crate::address::CompactAddress;
 use crate::block::Block;
 use crate::error::Result;
 use crate::hash::ZERO_HASH;
@@ -14,7 +17,7 @@ use crate::transactions::{Transaction, TransactionInput, TransactionOutput};
 use crate::visitors::BlockChainVisitor;
 
 pub struct Clusterizer {
-    pub clusters: DisjointSet<Address>,
+    pub clusters: DisjointSet<CompactAddress>,
 }
 
 impl Default for Clusterizer {
@@ -32,7 +35,7 @@ impl Clusterizer {
 }
 
 pub struct TransactionClusterState {
-    pub input_addresses: HashSet<Address>,
+    pub input_addresses: SmallVec<[CompactAddress; 8]>,
     pub output_values: Vec<u64>,
 }
 
@@ -41,7 +44,7 @@ pub struct DisjointSet<T: Clone + Hash + Eq> {
     set_size: u32,
     pub parent: Vec<u32>,
     pub rank: Vec<u8>,
-    pub map: HashMap<T, u32>, // Each T entry is mapped onto a u32 tag.
+    pub map: HashMap<T, u32, RandomState>, // Each T entry is mapped onto a u32 tag.
 }
 
 impl<T> Default for DisjointSet<T>
@@ -63,7 +66,7 @@ where
             set_size: 0,
             parent: Vec::with_capacity(CAPACITY),
             rank: Vec::with_capacity(CAPACITY),
-            map: HashMap::with_capacity(CAPACITY),
+            map: HashMap::with_capacity_and_hasher(CAPACITY, Default::default()),
         }
     }
 
@@ -72,7 +75,7 @@ where
             set_size: 0,
             parent: Vec::with_capacity(capacity),
             rank: Vec::with_capacity(capacity),
-            map: HashMap::with_capacity(capacity),
+            map: HashMap::with_capacity_and_hasher(capacity, Default::default()),
         }
     }
 
@@ -159,7 +162,8 @@ impl Clusterizer {
     /// lexicographically smallest address in the cluster (canonical representative),
     /// computed per root tag without hashing.
     pub fn write_csv<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        let mut root_to_min: Vec<Option<&Address>> = vec![None; self.clusters.parent.len()];
+        let mut root_to_min: Vec<Option<&CompactAddress>> =
+            vec![None; self.clusters.parent.len()];
         for (address, &tag) in &self.clusters.map {
             let root = self.clusters.parent[tag as usize] as usize;
             match &mut root_to_min[root] {
@@ -203,7 +207,7 @@ fn is_coinjoin(output_values: &[u64]) -> bool {
 impl BlockChainVisitor for Clusterizer {
     type BlockItem = ();
     type TransactionItem = TransactionClusterState;
-    type OutputItem = Address;
+    type OutputItem = CompactAddress;
     type DoneItem = (usize, String);
 
     fn new() -> Self {
@@ -219,7 +223,7 @@ impl BlockChainVisitor for Clusterizer {
         _block_item: &mut Self::BlockItem,
     ) -> Self::TransactionItem {
         TransactionClusterState {
-            input_addresses: HashSet::with_capacity(32),
+            input_addresses: SmallVec::new(),
             output_values: Vec::with_capacity(16),
         }
     }
@@ -236,7 +240,9 @@ impl BlockChainVisitor for Clusterizer {
             return;
         }
         if let Some(address) = output_item {
-            tx_item.input_addresses.insert(address);
+            if !tx_item.input_addresses.contains(&address) {
+                tx_item.input_addresses.push(address);
+            }
         }
     }
 
@@ -250,15 +256,17 @@ impl BlockChainVisitor for Clusterizer {
 
         match txout.script.to_highlevel() {
             HighLevel::PayToPubkeyHash(pkh) => {
-                Some(Address::from_hash160(Hash160::from_slice(pkh), 0x00))
+                Some(CompactAddress::from_hash160(Hash160::from_slice(pkh), 0x00))
             }
             HighLevel::PayToScriptHash(pkh) => {
-                Some(Address::from_hash160(Hash160::from_slice(pkh), 0x05))
+                Some(CompactAddress::from_hash160(Hash160::from_slice(pkh), 0x05))
             }
             HighLevel::PayToWitnessPubkeyHash(ref w)
             | HighLevel::PayToWitnessScriptHash(ref w)
             | HighLevel::PayToWitnessTaproot(ref w)
-            | HighLevel::PayToWitnessGeneral(ref w) => Some(Address::from_witness_program(w)),
+            | HighLevel::PayToWitnessGeneral(ref w) => {
+                Some(CompactAddress::from_witness_program(w))
+            }
             _ => None,
         }
     }
@@ -278,9 +286,9 @@ impl BlockChainVisitor for Clusterizer {
         if tx_item.input_addresses.len() > 1 {
             let mut tx_inputs_iter = tx_item.input_addresses.into_iter();
             let mut last_address = tx_inputs_iter.next().unwrap();
-            self.clusters.make_set(last_address.clone());
+            self.clusters.make_set(last_address);
             for address in tx_inputs_iter {
-                self.clusters.make_set(address.clone());
+                self.clusters.make_set(address);
                 let _ = self.clusters.union(&last_address, &address);
                 last_address = address;
             }
