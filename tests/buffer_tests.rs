@@ -68,7 +68,7 @@ fn test_blockchain_xor_handling() {
     file.write_all(&obfuscated).unwrap();
     drop(file);
 
-    let chain = unsafe { BlockChain::read(&temp_dir) };
+    let chain = unsafe { BlockChain::read(&temp_dir, 0) };
     assert_eq!(chain.len(), 1);
 
     let _ = fs::remove_dir_all(&temp_dir);

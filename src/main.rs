@@ -45,6 +45,10 @@ struct Cli {
     #[arg(short = 'o', long = "output", default_value = "clusters.csv")]
     output: PathBuf,
 
+    /// Stop after processing at most this many block files (0 = no limit)
+    #[arg(long, default_value_t = 0)]
+    max_blocks: usize,
+
     /// Action / visitor to run on the blockchain
     #[arg(short = 'a', long = "action", value_enum, default_value_t = Action::Clusterizer)]
     action: Action,
@@ -89,7 +93,7 @@ fn main() {
         "Opening Bitcoin blockchain from: {}",
         cli.blocks_dir.display()
     );
-    let chain = unsafe { BlockChain::read(&cli.blocks_dir) };
+    let chain = unsafe { BlockChain::read(&cli.blocks_dir, cli.max_blocks) };
     if chain.is_empty() {
         error!(
             "No Bitcoin block files (blk*.dat) found in: {}. Please verify the --blocks-dir path.",
@@ -116,6 +120,7 @@ fn main() {
             visitor
                 .write_csv(&mut writer)
                 .expect("Unable to write output file!");
+            bitiodine::metrics::log_peak_rss("after clusterizer");
             info!("Done!");
         }
         Action::DumpBalances => {
@@ -134,6 +139,7 @@ fn main() {
             visitor
                 .write_csv(&mut writer)
                 .expect("Unable to write output file!");
+            bitiodine::metrics::log_peak_rss("after dump-balances");
             info!("Done!");
         }
         Action::DumpAddresses => {

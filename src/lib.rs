@@ -8,6 +8,7 @@ pub mod hash;
 pub mod hash160;
 pub mod header;
 pub mod merkle;
+pub mod metrics;
 pub mod script;
 pub mod transactions;
 pub mod visitors;

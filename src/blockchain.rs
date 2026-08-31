@@ -45,11 +45,12 @@ fn apply_xor(buf: &mut [u8], key: &[u8]) {
 impl BlockChain {
     /// Discovers all `blk*.dat` Bitcoin block files in `blocks_dir` and reads `xor.dat` if present.
     /// Files are memory-mapped on-demand one file at a time during `walk()` to bound RAM usage.
+    /// At most `max_files` files are processed (0 = no limit).
     ///
     /// # Safety
     /// The caller must ensure that the block files are not concurrently mutated or truncated
     /// by another process (such as `bitcoind`) while mapped, as that could cause undefined behavior.
-    pub unsafe fn read<P: AsRef<Path>>(blocks_dir: P) -> BlockChain {
+    pub unsafe fn read<P: AsRef<Path>>(blocks_dir: P, max_files: usize) -> BlockChain {
         let blocks_dir_path = blocks_dir.as_ref().to_path_buf();
         let xor_key = std::fs::read(blocks_dir_path.join("xor.dat"))
             .ok()
@@ -65,6 +66,9 @@ impl BlockChain {
                 break;
             }
             num_files += 1;
+        }
+        if max_files > 0 && num_files > max_files {
+            num_files = max_files;
         }
 
         BlockChain {
@@ -272,6 +276,8 @@ impl BlockChain {
             height += 1;
             goal_prev_hash = block.header().cur_hash();
         }
+
+        info!("OutputMap entries at end of walk: {}", output_items.len());
 
         Ok((height, goal_prev_hash, output_items))
     }
