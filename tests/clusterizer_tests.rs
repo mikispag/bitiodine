@@ -83,18 +83,21 @@ fn test_clusterizer_deterministic_representatives() {
     let rep_ab = if addr_a < addr_b { &addr_a } else { &addr_b };
     let rep_cd = if addr_c < addr_d { &addr_c } else { &addr_d };
 
-    let mut expected_entries = vec![
+    let expected_entries = vec![
         (addr_a.clone(), rep_ab.clone()),
         (addr_b.clone(), rep_ab.clone()),
         (addr_c.clone(), rep_cd.clone()),
         (addr_d.clone(), rep_cd.clone()),
     ];
-    expected_entries.sort_unstable_by_key(|(a, _)| a.clone());
 
-    let mut expected = String::new();
-    for (a, rep) in expected_entries {
-        expected.push_str(&format!("{},{}\n", a, rep));
-    }
+    // Row order is map-iteration order (unsorted); compare content as a set.
+    let mut actual_lines: Vec<&str> = csv.lines().collect();
+    actual_lines.sort_unstable();
+    let mut expected_lines: Vec<String> = expected_entries
+        .into_iter()
+        .map(|(a, rep)| format!("{},{}", a, rep))
+        .collect();
+    expected_lines.sort_unstable();
 
-    assert_eq!(csv, expected);
+    assert_eq!(actual_lines, expected_lines);
 }

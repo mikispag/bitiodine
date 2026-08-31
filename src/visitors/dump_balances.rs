@@ -127,22 +127,6 @@ impl BlockChainVisitor for DumpBalances {
     }
 
     fn done(&mut self) -> Result<Self::DoneItem> {
-        let mut output_string = String::new();
-
-        for (address_tuple, balance) in &self.balances {
-            if *balance == 0 {
-                continue;
-            }
-            let address = &address_tuple.0;
-            let hash160 = address_tuple.1.unwrap_or_default();
-            output_string.push_str(&format!(
-                "{:.8},{},{}\n",
-                (*balance as f64) * 1e-8,
-                hash160,
-                address
-            ));
-        }
-
-        Ok((self.balances.len(), output_string))
+        Ok((self.balances.len(), String::new()))
     }
 }
