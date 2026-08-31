@@ -46,10 +46,18 @@ fn test_compact_address_display_parity() {
     use bitcoin_bech32::constants::Network;
     use bitcoin_bech32::{u5, WitnessProgram};
 
-    let wp20 = WitnessProgram::new(u5::try_from_u8(0).unwrap(), vec![0x75; 20], Network::Bitcoin)
-        .unwrap();
-    let wp32 = WitnessProgram::new(u5::try_from_u8(1).unwrap(), vec![0x51; 32], Network::Bitcoin)
-        .unwrap();
+    let wp20 = WitnessProgram::new(
+        u5::try_from_u8(0).unwrap(),
+        vec![0x75; 20],
+        Network::Bitcoin,
+    )
+    .unwrap();
+    let wp32 = WitnessProgram::new(
+        u5::try_from_u8(1).unwrap(),
+        vec![0x51; 32],
+        Network::Bitcoin,
+    )
+    .unwrap();
     let wp_short = WitnessProgram::new(
         u5::try_from_u8(2).unwrap(),
         vec![0xAA, 0xBB],
@@ -59,12 +67,24 @@ fn test_compact_address_display_parity() {
 
     let pairs = vec![
         (
-            Address::from_hash160(&Hash160(hex_hash20("751e76e8199196d454941c45d1b3a323f1433bd6")), 0x00),
-            CompactAddress::from_hash160(&Hash160(hex_hash20("751e76e8199196d454941c45d1b3a323f1433bd6")), 0x00),
+            Address::from_hash160(
+                &Hash160(hex_hash20("751e76e8199196d454941c45d1b3a323f1433bd6")),
+                0x00,
+            ),
+            CompactAddress::from_hash160(
+                &Hash160(hex_hash20("751e76e8199196d454941c45d1b3a323f1433bd6")),
+                0x00,
+            ),
         ),
         (
-            Address::from_hash160(&Hash160(hex_hash20("8f55563b9a19f321c211e9b9f38ecd686daec030")), 0x05),
-            CompactAddress::from_hash160(&Hash160(hex_hash20("8f55563b9a19f321c211e9b9f38ecd686daec030")), 0x05),
+            Address::from_hash160(
+                &Hash160(hex_hash20("8f55563b9a19f321c211e9b9f38ecd686daec030")),
+                0x05,
+            ),
+            CompactAddress::from_hash160(
+                &Hash160(hex_hash20("8f55563b9a19f321c211e9b9f38ecd686daec030")),
+                0x05,
+            ),
         ),
         (
             Address::from_witness_program(&wp20),

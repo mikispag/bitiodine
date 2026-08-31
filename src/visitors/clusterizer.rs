@@ -162,8 +162,7 @@ impl Clusterizer {
     /// lexicographically smallest address in the cluster (canonical representative),
     /// computed per root tag without hashing.
     pub fn write_csv<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        let mut root_to_min: Vec<Option<&CompactAddress>> =
-            vec![None; self.clusters.parent.len()];
+        let mut root_to_min: Vec<Option<&CompactAddress>> = vec![None; self.clusters.parent.len()];
         for (address, &tag) in &self.clusters.map {
             let root = self.clusters.parent[tag as usize] as usize;
             match &mut root_to_min[root] {
@@ -177,8 +176,7 @@ impl Clusterizer {
         }
         for (address, &tag) in &self.clusters.map {
             let root = self.clusters.parent[tag as usize] as usize;
-            let rep = root_to_min[root]
-                .expect("finalized root tag must map to a cluster member");
+            let rep = root_to_min[root].expect("finalized root tag must map to a cluster member");
             writeln!(writer, "{},{}", address, rep)?;
         }
         Ok(())
