@@ -3,6 +3,7 @@ use memmap2::Mmap;
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::block::Block;
@@ -212,6 +213,7 @@ impl BlockChain {
         let mut goal_prev_hash: Hash = ZERO_HASH;
         let mut last_block_buf: Option<Vec<u8>> = None;
         let mut height = 0;
+        let mut scratch: Vec<u8> = Vec::new();
 
         for n in 0..self.num_files {
             info!(
@@ -221,47 +223,56 @@ impl BlockChain {
             );
 
             let blk_path = self.blocks_dir.join(format!("blk{:05}.dat", n));
-            let file = match File::open(&blk_path) {
+            let mut file = match File::open(&blk_path) {
                 Ok(f) => f,
                 Err(_) => break,
             };
 
-            let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+            let file_len = file.metadata().map(|m| m.len()).unwrap_or(0) as usize;
             if file_len == 0 {
                 continue;
             }
 
-            let mmap = if let Some(ref key) = self.xor_key {
-                match unsafe { memmap2::MmapOptions::new().map_copy(&file) } {
-                    Ok(mut m) => {
-                        let non_zero_len = m.iter().rposition(|&b| b != 0).map_or(0, |idx| idx + 1);
-                        if non_zero_len == 0 {
-                            continue;
-                        }
-                        apply_xor(&mut m[..non_zero_len], key);
-                        match m.make_read_only() {
-                            Ok(m_ro) => m_ro,
-                            Err(_) => break,
-                        }
-                    }
-                    Err(_) => break,
+            if let Some(ref key) = self.xor_key {
+                let file_len = file_len as usize;
+                if scratch.len() < file_len {
+                    scratch.resize(file_len, 0);
                 }
+                if file.read_exact(&mut scratch[..file_len]).is_err() {
+                    break;
+                }
+                let non_zero_len = scratch[..file_len]
+                    .iter()
+                    .rposition(|&b| b != 0)
+                    .map_or(0, |idx| idx + 1);
+                if non_zero_len == 0 {
+                    continue;
+                }
+                apply_xor(&mut scratch[..non_zero_len], key);
+                self.walk_slice(
+                    &scratch[..file_len],
+                    &mut goal_prev_hash,
+                    &mut last_block_buf,
+                    &mut height,
+                    &mut skipped,
+                    &mut output_items,
+                    visitor,
+                )?;
             } else {
-                match unsafe { Mmap::map(&file) } {
+                let mmap = match unsafe { Mmap::map(&file) } {
                     Ok(m) => m,
                     Err(_) => break,
-                }
-            };
-
-            self.walk_slice(
-                &mmap,
-                &mut goal_prev_hash,
-                &mut last_block_buf,
-                &mut height,
-                &mut skipped,
-                &mut output_items,
-                visitor,
-            )?;
+                };
+                self.walk_slice(
+                    &mmap,
+                    &mut goal_prev_hash,
+                    &mut last_block_buf,
+                    &mut height,
+                    &mut skipped,
+                    &mut output_items,
+                    visitor,
+                )?;
+            }
         }
 
         if let Some(lb_bytes) = last_block_buf.take() {
