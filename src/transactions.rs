@@ -9,7 +9,7 @@ use crate::hash::Hash;
 use crate::script::Script;
 use crate::visitors::BlockChainVisitor;
 
-pub type OutputItemList<T> = SmallVec<[(u32, T); 2]>;
+pub type OutputItemList<T> = SmallVec<[(u32, T); 1]>;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Transactions<'a> {

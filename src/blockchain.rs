@@ -10,7 +10,7 @@ use crate::error::ParseResult;
 use crate::hash::{Hash, ZERO_HASH};
 use crate::visitors::BlockChainVisitor;
 
-pub type OutputMap<T> = HashMap<Hash, SmallVec<[(u32, T); 2]>>;
+pub type OutputMap<T> = HashMap<Hash, SmallVec<[(u32, T); 1]>>;
 
 pub struct BlockChain {
     blocks_dir: PathBuf,

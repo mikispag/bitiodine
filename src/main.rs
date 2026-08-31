@@ -11,6 +11,10 @@ use bitiodine::visitors::{
 };
 use bitiodine::BlockChain;
 
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     /// Group together Bitcoin addresses in ownership clusters
