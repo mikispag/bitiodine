@@ -1,7 +1,7 @@
 [package]
 name = "bitiodine"
 version = "0.1.0"
-authors = ["Michele Spagnuolo <mikispag@gmail.com>"]
+authors = ["Michele Spagnuolo <miki@miki.it>"]
 edition = "2021"
 rust-version = "1.75"
 description = "A fast Bitcoin blockchain parser with address clustering capabilities"

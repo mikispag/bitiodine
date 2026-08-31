@@ -33,7 +33,7 @@ pub enum Action {
 #[command(
     name = "bitiodine",
     version,
-    author = "Michele Spagnuolo <mikispag@gmail.com>",
+    author = "Michele Spagnuolo <miki@miki.it>",
     about = "A high-performance Bitcoin blockchain parser and address clusterizer in Rust."
 )]
 struct Cli {
