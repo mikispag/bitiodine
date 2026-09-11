@@ -1,293 +1,353 @@
-use log::{debug, info};
-use memmap2::Mmap;
+use bitcoin::pow::{CompactTarget, Target, Work};
+use log::info;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
-use crate::block::Block;
-use crate::error::ParseResult;
+use crate::block::{Block, MAINNET_MAGIC};
+use crate::error::{ParseError, ParseResult};
 use crate::hash::{Hash, ZERO_HASH};
+use crate::header::BlockHeader;
 use crate::visitors::BlockChainVisitor;
 
 pub type OutputMap<T> = HashMap<Hash, crate::transactions::OutputItemList<T>>;
 
-pub struct BlockChain {
-    blocks_dir: PathBuf,
-    num_files: usize,
-    xor_key: Option<Vec<u8>>,
+struct BlockFile {
+    path: PathBuf,
+    len: u64,
+    modified: SystemTime,
 }
 
-fn apply_xor(buf: &mut [u8], key: &[u8]) {
-    if key.is_empty() || key.iter().all(|&b| b == 0) {
-        return;
+impl BlockFile {
+    fn check(&self) -> ParseResult<()> {
+        let metadata = std::fs::metadata(&self.path)?;
+        if metadata.len() != self.len || metadata.modified()? != self.modified {
+            return Err(ParseError::Chain(format!(
+                "Block file changed during analysis: {}",
+                self.path.display()
+            )));
+        }
+        Ok(())
     }
-    if key.len() == 8 {
-        let key_u64 = u64::from_ne_bytes(key.try_into().unwrap());
-        let (prefix, chunks, suffix) = unsafe { buf.align_to_mut::<u64>() };
-        for (i, b) in prefix.iter_mut().enumerate() {
-            *b ^= key[i % 8];
-        }
-        for chunk in chunks.iter_mut() {
-            *chunk ^= key_u64;
-        }
-        // prefix.len() < 8 by construction, so the key offset into the suffix is just prefix.len()
-        for (i, b) in suffix.iter_mut().enumerate() {
-            *b ^= key[(prefix.len() + i) % 8];
-        }
-    } else {
-        for (i, b) in buf.iter_mut().enumerate() {
-            *b ^= key[i % key.len()];
-        }
+}
+
+struct IndexedBlock {
+    hash: Hash,
+    previous: Hash,
+    file: usize,
+    offset: u64,
+    len: u32,
+    work: Work,
+}
+
+pub struct BlockChain {
+    files: Vec<BlockFile>,
+    xor_key: [u8; 8],
+    tip: Option<Hash>,
+}
+
+fn apply_xor(bytes: &mut [u8], key: &[u8; 8], offset: u64) {
+    let mut rotated = [0; 8];
+    for (i, byte) in rotated.iter_mut().enumerate() {
+        *byte = key[((offset % 8) as usize + i) % 8];
+    }
+    let key_word = u64::from_ne_bytes(rotated);
+    let mut chunks = bytes.chunks_exact_mut(8);
+    for chunk in &mut chunks {
+        let word = u64::from_ne_bytes(chunk.try_into().unwrap()) ^ key_word;
+        chunk.copy_from_slice(&word.to_ne_bytes());
+    }
+    for (byte, key_byte) in chunks.into_remainder().iter_mut().zip(rotated) {
+        *byte ^= key_byte;
     }
 }
 
 impl BlockChain {
-    /// Discovers all `blk*.dat` Bitcoin block files in `blocks_dir` and reads `xor.dat` if present.
-    /// Files are memory-mapped on-demand one file at a time during `walk()` to bound RAM usage.
-    /// At most `max_files` files are processed (0 = no limit).
+    /// Discovers consecutive mainnet block files; a zero file limit means no limit.
     ///
-    /// # Safety
-    /// The caller must ensure that the block files are not concurrently mutated or truncated
-    /// by another process (such as `bitcoind`) while mapped, as that could cause undefined behavior.
-    pub unsafe fn read<P: AsRef<Path>>(blocks_dir: P, max_files: usize) -> BlockChain {
-        let blocks_dir_path = blocks_dir.as_ref().to_path_buf();
-        let xor_key = std::fs::read(blocks_dir_path.join("xor.dat"))
-            .ok()
-            .filter(|k| !k.is_empty() && k.iter().any(|&b| b != 0));
-        if xor_key.is_some() {
-            info!("Detected XOR obfuscation key in xor.dat");
-        }
-
-        let mut num_files = 0;
-        loop {
-            let blk_path = blocks_dir_path.join(format!("blk{:05}.dat", num_files));
-            if !blk_path.exists() {
-                break;
+    /// Use a stable copy or a stopped node: changes between discovery, indexing and
+    /// traversal are errors. Parsing uses owned buffers and does not memory-map files.
+    pub fn read<P: AsRef<Path>>(blocks_dir: P, max_files: usize) -> ParseResult<Self> {
+        let directory = blocks_dir.as_ref();
+        let xor_key = match std::fs::read(directory.join("xor.dat")) {
+            Ok(bytes) => bytes.try_into().map_err(|_| {
+                ParseError::Chain("xor.dat must contain exactly eight bytes".into())
+            })?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => [0; 8],
+            Err(e) => return Err(e.into()),
+        };
+        let mut paths = Vec::new();
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let Some(number) = name
+                .strip_prefix("blk")
+                .and_then(|n| n.strip_suffix(".dat"))
+            else {
+                continue;
+            };
+            if number.len() < 5 || !number.bytes().all(|b| b.is_ascii_digit()) {
+                continue;
             }
-            num_files += 1;
+            let number: usize = number.parse().map_err(|_| ParseError::Invalid)?;
+            paths.push((number, entry.path()));
         }
-        if max_files > 0 && num_files > max_files {
-            num_files = max_files;
+        paths.sort_unstable();
+        if max_files > 0 {
+            paths.truncate(max_files);
         }
-
-        BlockChain {
-            blocks_dir: blocks_dir_path,
-            num_files,
+        let mut files = Vec::with_capacity(paths.len());
+        for (expected, (number, path)) in paths.into_iter().enumerate() {
+            if number != expected {
+                return Err(ParseError::Chain(format!(
+                    "Missing block file blk{expected:05}.dat"
+                )));
+            }
+            let metadata = std::fs::metadata(&path)?;
+            if !metadata.is_file() {
+                return Err(ParseError::Chain(format!(
+                    "Not a regular block file: {}",
+                    path.display()
+                )));
+            }
+            files.push(BlockFile {
+                path,
+                len: metadata.len(),
+                modified: metadata.modified()?,
+            });
+        }
+        Ok(Self {
+            files,
             xor_key,
-        }
+            tip: None,
+        })
+    }
+
+    /// Anchors traversal to a tip independently verified by Bitcoin Core.
+    /// Raw block files can also contain candidates rejected during validation.
+    pub fn with_tip(mut self, tip: Hash) -> Self {
+        self.tip = Some(tip);
+        self
     }
 
     pub fn len(&self) -> usize {
-        self.num_files
+        self.files.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.num_files == 0
+        self.files.is_empty()
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn walk_slice<V: BlockChainVisitor>(
-        &self,
-        mut slice: &[u8],
-        goal_prev_hash: &mut Hash,
-        last_block_buf: &mut Option<Vec<u8>>,
-        height: &mut u64,
-        skipped: &mut HashMap<Hash, Vec<u8>>,
-        output_items: &mut OutputMap<V::OutputItem>,
-        visitor: &mut V,
-    ) -> ParseResult<()> {
-        while !slice.is_empty() {
-            if skipped.contains_key(goal_prev_hash) {
-                if let Some(lb_bytes) = last_block_buf.take() {
-                    let lb = Block(&lb_bytes);
-                    lb.walk(visitor, *height, output_items)?;
-                    debug!(
-                        "(rewind - pre-step) Block {} - {} -> {}",
-                        height,
-                        lb.header().prev_hash(),
-                        lb.header().cur_hash()
-                    );
-                    *height += 1;
-                }
-                while let Some(block_bytes) = skipped.remove(goal_prev_hash) {
-                    let block = Block(&block_bytes);
-                    block.walk(visitor, *height, output_items)?;
-                    debug!(
-                        "(rewind) Block {} - {} -> {}",
-                        height,
-                        block.header().prev_hash(),
-                        block.header().cur_hash()
-                    );
-                    *height += 1;
-                    *goal_prev_hash = block.header().cur_hash();
-                }
-            }
-
-            let block = match Block::read(&mut slice)? {
-                Some(block) => block,
-                None => {
-                    assert_eq!(slice.len(), 0);
-                    break;
-                }
-            };
-
-            debug!(
-                "Block candidate for height {} - goal_prev_hash = {}, prev_hash = {}, cur_hash = {}",
-                height,
-                goal_prev_hash,
-                block.header().prev_hash(),
-                block.header().cur_hash()
+    fn index(&self) -> ParseResult<Vec<IndexedBlock>> {
+        let mut blocks = Vec::new();
+        let mut known = std::collections::HashSet::new();
+        for (file_index, file) in self.files.iter().enumerate() {
+            file.check()?;
+            info!(
+                "Indexing block file {}/{}...",
+                file_index + 1,
+                self.files.len()
             );
-
-            if block.header().prev_hash() != goal_prev_hash {
-                skipped.insert(*block.header().prev_hash(), block.0.to_vec());
-
-                if let Some(ref lb_bytes) = last_block_buf {
-                    let lb = Block(lb_bytes);
-                    if block.header().prev_hash() == lb.header().prev_hash() {
-                        debug!(
-                            "Chain split detected: {} <-> {}. Detecting main chain and orphan.",
-                            lb.header().cur_hash(),
-                            block.header().cur_hash()
-                        );
-
-                        let first_orphan_bytes = lb_bytes.clone();
-                        let second_orphan_bytes = block.0.to_vec();
-                        let first_cur_hash = Block(&first_orphan_bytes).header().cur_hash();
-                        let second_cur_hash = Block(&second_orphan_bytes).header().cur_hash();
-
-                        loop {
-                            let block = match Block::read(&mut slice)? {
-                                Some(block) => block,
-                                None => {
-                                    assert_eq!(slice.len(), 0);
-                                    break;
-                                }
-                            };
-                            skipped.insert(*block.header().prev_hash(), block.0.to_vec());
-                            if block.header().prev_hash() == &first_cur_hash {
-                                // First wins
-                                debug!("Chain split: {} is on the main chain!", first_cur_hash);
-                                break;
-                            }
-                            if block.header().prev_hash() == &second_cur_hash {
-                                // Second wins
-                                debug!("Chain split: {} is on the main chain!", second_cur_hash);
-                                *goal_prev_hash = second_cur_hash;
-                                *last_block_buf = Some(second_orphan_bytes);
-                                break;
-                            }
+            let mut reader = BufReader::new(File::open(&file.path)?);
+            let mut offset = 0;
+            while offset < file.len {
+                let count = (file.len - offset).min(8) as usize;
+                let mut raw_frame = [0; 8];
+                reader.read_exact(&mut raw_frame[..count])?;
+                // Padding starts only at a record boundary and fills the rest of
+                // the file. A zero ciphertext header can also begin a real record.
+                if raw_frame[..count].iter().all(|b| *b == 0) {
+                    let mut tail = [0; 8192];
+                    let all_zero = loop {
+                        let count = reader.read(&mut tail)?;
+                        if count == 0 {
+                            break true;
                         }
+                        if tail[..count].iter().any(|b| *b != 0) {
+                            break false;
+                        }
+                    };
+                    if all_zero {
+                        break;
                     }
+                    reader.seek(SeekFrom::Start(offset + count as u64))?;
                 }
-                continue;
+                let mut frame = raw_frame;
+                apply_xor(&mut frame[..count], &self.xor_key, offset);
+                if count < 8 || frame[..4] != MAINNET_MAGIC.to_le_bytes() {
+                    return Err(if count < 8 {
+                        ParseError::Eof
+                    } else {
+                        ParseError::Invalid
+                    });
+                }
+                let len = u32::from_le_bytes(frame[4..].try_into().unwrap());
+                if !(81..=4_000_000).contains(&len) {
+                    return Err(ParseError::Invalid);
+                }
+                let end = offset + 8 + u64::from(len);
+                if end > file.len {
+                    return Err(ParseError::Eof);
+                }
+                let mut bytes = [0; 80];
+                reader.read_exact(&mut bytes)?;
+                apply_xor(&mut bytes, &self.xor_key, offset + 8);
+                let header = BlockHeader::new(&bytes);
+                let bits = header.bits();
+                let exponent = bits >> 24;
+                let mantissa = bits & 0x007fffff;
+                if bits & 0x00800000 != 0
+                    || exponent > 34
+                    || (exponent > 33 && mantissa > 0xff)
+                    || (exponent > 32 && mantissa > 0xffff)
+                {
+                    return Err(ParseError::Invalid);
+                }
+                let target = Target::from_compact(CompactTarget::from_consensus(bits));
+                if target == Target::ZERO {
+                    return Err(ParseError::Invalid);
+                }
+                let hash = header.cur_hash();
+                if known.insert(hash) {
+                    blocks.push(IndexedBlock {
+                        hash,
+                        previous: *header.prev_hash(),
+                        file: file_index,
+                        offset: offset + 8,
+                        len,
+                        work: target.to_work(),
+                    });
+                }
+                reader.seek(SeekFrom::Start(end))?;
+                offset = end;
             }
-
-            if let Some(lb_bytes) = last_block_buf.take() {
-                let lb = Block(&lb_bytes);
-                lb.walk(visitor, *height, output_items)?;
-                debug!(
-                    "(last_block) Block {} - {} -> {}",
-                    height,
-                    lb.header().prev_hash(),
-                    lb.header().cur_hash()
-                );
-                *height += 1;
-            }
-
-            *goal_prev_hash = block.header().cur_hash();
-            *last_block_buf = Some(block.0.to_vec());
+            file.check()?;
         }
-
-        Ok(())
+        Ok(blocks)
     }
 
+    /// Visits the anchored chain, or the unique most-work connected candidate,
+    /// after indexing all selected files. Use with_tip for Core's validated chain;
+    /// selecting by header work alone does not perform consensus validation.
+    /// Without an anchor, equal-work best tips are rejected as ambiguous.
+    /// Visitor state may be partially updated if traversal returns an error.
     pub fn walk<V: BlockChainVisitor>(
         &self,
         visitor: &mut V,
     ) -> ParseResult<(u64, Hash, OutputMap<V::OutputItem>)> {
-        let mut skipped: HashMap<Hash, Vec<u8>> = Default::default();
-        let mut output_items: OutputMap<V::OutputItem> = Default::default();
-        let mut goal_prev_hash: Hash = ZERO_HASH;
-        let mut last_block_buf: Option<Vec<u8>> = None;
-        let mut height = 0;
-        let mut scratch: Vec<u8> = Vec::new();
-
-        for n in 0..self.num_files {
-            info!(
-                "Parsing the blockchain: block file {}/{}...",
-                n + 1,
-                self.num_files
-            );
-
-            let blk_path = self.blocks_dir.join(format!("blk{:05}.dat", n));
-            let mut file = match File::open(&blk_path) {
-                Ok(f) => f,
-                Err(_) => break,
-            };
-
-            let file_len = file.metadata().map(|m| m.len()).unwrap_or(0) as usize;
-            if file_len == 0 {
-                continue;
+        let blocks = self.index()?;
+        let path = select_chain(&blocks, self.tip)?;
+        let tip = blocks[*path.last().unwrap()].hash;
+        info!("Selected {} blocks ending at {}", path.len(), tip);
+        let mut output_items = OutputMap::default();
+        let mut buffer = Vec::new();
+        let mut open_file: Option<(usize, File)> = None;
+        for (height, &index) in path.iter().enumerate() {
+            let block = &blocks[index];
+            if open_file.as_ref().map(|(n, _)| *n) != Some(block.file) {
+                let file = &self.files[block.file];
+                file.check()?;
+                open_file = Some((block.file, File::open(&file.path)?));
             }
-
-            if let Some(ref key) = self.xor_key {
-                if scratch.len() < file_len {
-                    scratch.resize(file_len, 0);
-                }
-                if file.read_exact(&mut scratch[..file_len]).is_err() {
-                    break;
-                }
-                let non_zero_len = scratch[..file_len]
-                    .iter()
-                    .rposition(|&b| b != 0)
-                    .map_or(0, |idx| idx + 1);
-                if non_zero_len == 0 {
-                    continue;
-                }
-                apply_xor(&mut scratch[..non_zero_len], key);
-                self.walk_slice(
-                    &scratch[..file_len],
-                    &mut goal_prev_hash,
-                    &mut last_block_buf,
-                    &mut height,
-                    &mut skipped,
-                    &mut output_items,
-                    visitor,
-                )?;
-            } else {
-                let mmap = match unsafe { Mmap::map(&file) } {
-                    Ok(m) => m,
-                    Err(_) => break,
-                };
-                self.walk_slice(
-                    &mmap,
-                    &mut goal_prev_hash,
-                    &mut last_block_buf,
-                    &mut height,
-                    &mut skipped,
-                    &mut output_items,
-                    visitor,
-                )?;
+            let file = &mut open_file.as_mut().unwrap().1;
+            file.seek(SeekFrom::Start(block.offset))?;
+            buffer.resize(block.len as usize, 0);
+            file.read_exact(&mut buffer)?;
+            apply_xor(&mut buffer, &self.xor_key, block.offset);
+            let parsed = Block(&buffer);
+            if parsed.header().cur_hash() != block.hash {
+                return Err(ParseError::Chain(
+                    "Block header changed after indexing".into(),
+                ));
             }
+            parsed.walk(visitor, height as u64, &mut output_items)?;
         }
-
-        if let Some(lb_bytes) = last_block_buf.take() {
-            let lb = Block(&lb_bytes);
-            lb.walk(visitor, height, &mut output_items)?;
-            height += 1;
+        for file in &self.files {
+            file.check()?;
         }
-
-        while let Some(block_bytes) = skipped.remove(&goal_prev_hash) {
-            let block = Block(&block_bytes);
-            block.walk(visitor, height, &mut output_items)?;
-            height += 1;
-            goal_prev_hash = block.header().cur_hash();
-        }
-
         info!("OutputMap entries at end of walk: {}", output_items.len());
-
-        Ok((height, goal_prev_hash, output_items))
+        Ok((path.len() as u64, tip, output_items))
     }
+}
+
+fn select_chain(blocks: &[IndexedBlock], requested_tip: Option<Hash>) -> ParseResult<Vec<usize>> {
+    let by_hash: HashMap<_, _> = blocks
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.hash, i))
+        .collect();
+    let mut resolved = vec![false; blocks.len()];
+    let mut scores = vec![None; blocks.len()];
+    let zero = Work::from_be_bytes([0; 32]);
+    let maximum = Work::from_be_bytes([0xff; 32]);
+    let mut pending = Vec::new();
+    for start in 0..blocks.len() {
+        if resolved[start] {
+            continue;
+        }
+        let mut current = start;
+        let mut score = loop {
+            if resolved[current] {
+                break scores[current];
+            }
+            resolved[current] = true;
+            pending.push(current);
+            if blocks[current].previous == ZERO_HASH {
+                break Some(zero);
+            }
+            match by_hash.get(&blocks[current].previous) {
+                Some(&parent) => current = parent,
+                None => break None,
+            }
+        };
+        while let Some(index) = pending.pop() {
+            if let Some(total) = score {
+                if blocks[index].work > maximum - total {
+                    return Err(ParseError::Invalid);
+                }
+                score = Some(total + blocks[index].work);
+            }
+            scores[index] = score;
+        }
+    }
+    let tip = if let Some(hash) = requested_tip {
+        let index = *by_hash.get(&hash).ok_or_else(|| {
+            ParseError::Chain(format!(
+                "Requested chain tip {hash} is missing from the selected files"
+            ))
+        })?;
+        if scores[index].is_none() {
+            return Err(ParseError::Chain(format!(
+                "Requested chain tip {hash} has missing ancestors"
+            )));
+        }
+        index
+    } else {
+        let best_score = scores.iter().flatten().max().copied().ok_or_else(|| {
+            ParseError::Chain("No complete chain connects to a genesis block".into())
+        })?;
+        let mut tips = scores
+            .iter()
+            .enumerate()
+            .filter_map(|(i, score)| (*score == Some(best_score)).then_some(i));
+        let tip = tips.next().unwrap();
+        if tips.next().is_some() {
+            return Err(ParseError::Chain(
+                "Multiple equal-work chain tips; specify the independently validated --chain-tip"
+                    .into(),
+            ));
+        }
+        tip
+    };
+    let mut path = vec![tip];
+    let mut current = tip;
+    while blocks[current].previous != ZERO_HASH {
+        current = by_hash[&blocks[current].previous];
+        path.push(current);
+    }
+    path.reverse();
+    Ok(path)
 }

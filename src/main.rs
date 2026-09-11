@@ -4,7 +4,9 @@ use log::{error, info, LevelFilter};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::process::ExitCode;
 
+use bitiodine::hash::Hash;
 use bitiodine::visitors::{
     BlockChainVisitor, Clusterizer, DataOutputFinder, DonationFinder, DumpAddresses, DumpBalances,
     DumpTxHashes, MerkleVisitor,
@@ -17,7 +19,7 @@ static GLOBAL_ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// Group together Bitcoin addresses in ownership clusters
+    /// Group co-spent Bitcoin addresses using an ownership heuristic
     Clusterizer,
     /// Dump all balances and associated addresses
     DumpBalances,
@@ -27,7 +29,7 @@ pub enum Action {
     DumpTxHashes,
     /// Find and print OP_RETURN data outputs
     DataoutputFinder,
-    /// Find potential donation or non-standard outputs
+    /// Print potential donation or non-standard outputs as CSV
     DonationFinder,
     /// Verify the Merkle root of every block
     Merkle,
@@ -53,6 +55,10 @@ struct Cli {
     #[arg(long, default_value_t = 0)]
     max_blocks: usize,
 
+    /// Select the chain ending at this block hash (e.g. Core getbestblockhash)
+    #[arg(long)]
+    chain_tip: Option<String>,
+
     /// Action / visitor to run on the blockchain
     #[arg(short = 'a', long = "action", value_enum, default_value_t = Action::Clusterizer)]
     action: Action,
@@ -63,9 +69,15 @@ struct Cli {
 }
 
 fn default_blocks_dir() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".bitcoin").join("blocks"))
-        .unwrap_or_else(|| PathBuf::from(".bitcoin/blocks"))
+    #[cfg(target_os = "windows")]
+    let data_dir = dirs::data_dir().unwrap_or_default().join("Bitcoin");
+    #[cfg(target_os = "macos")]
+    let data_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join("Library/Application Support/Bitcoin");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let data_dir = dirs::home_dir().unwrap_or_default().join(".bitcoin");
+    data_dir.join("blocks")
 }
 
 fn initialize_logger(verbosity: u8) {
@@ -89,94 +101,94 @@ fn initialize_logger(verbosity: u8) {
         .init();
 }
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
     initialize_logger(cli.verbosity);
+    match run(cli) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            error!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
 
+fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     info!(
         "Opening Bitcoin blockchain from: {}",
         cli.blocks_dir.display()
     );
-    let chain = unsafe { BlockChain::read(&cli.blocks_dir, cli.max_blocks) };
+    let chain = BlockChain::read(&cli.blocks_dir, cli.max_blocks)?;
+    let chain = match cli.chain_tip {
+        Some(tip) => chain.with_tip(Hash::from_pretty(&tip)?),
+        None => chain,
+    };
     if chain.is_empty() {
-        error!(
+        return Err(format!(
             "No Bitcoin block files (blk*.dat) found in: {}. Please verify the --blocks-dir path.",
             cli.blocks_dir.display()
-        );
-        return;
+        )
+        .into());
     }
     info!("Found {} block file(s) to process.", chain.len());
 
     match cli.action {
         Action::Clusterizer => {
             let mut visitor = Clusterizer::new();
-            if let Err(e) = chain.walk(&mut visitor) {
-                error!("Error walking blockchain: {e}");
-                return;
-            }
-            let (count, _) = visitor.done().expect("Clusterizer failed!");
+            chain.walk(&mut visitor)?;
+            let (count, _) = visitor.done()?;
             info!(
                 "Writing {count} clustered addresses to {}",
                 cli.output.display()
             );
-            let file = File::create(&cli.output).expect("Unable to create output file!");
+            let file = File::create(&cli.output)?;
             let mut writer = BufWriter::new(file);
-            visitor
-                .write_csv(&mut writer)
-                .expect("Unable to write output file!");
+            visitor.write_csv(&mut writer)?;
+            writer.flush()?;
             bitiodine::metrics::log_peak_rss("after clusterizer");
             info!("Done!");
         }
         Action::DumpBalances => {
             let mut visitor = DumpBalances::new();
-            if let Err(e) = chain.walk(&mut visitor) {
-                error!("Error walking blockchain: {e}");
-                return;
-            }
-            let (count, _) = visitor.done().expect("DumpBalances failed!");
+            chain.walk(&mut visitor)?;
+            let (count, _) = visitor.done()?;
             info!(
                 "Writing {count} address balances to {}",
                 cli.output.display()
             );
-            let file = File::create(&cli.output).expect("Unable to create output file!");
+            let file = File::create(&cli.output)?;
             let mut writer = BufWriter::new(file);
-            visitor
-                .write_csv(&mut writer)
-                .expect("Unable to write output file!");
+            visitor.write_csv(&mut writer)?;
+            writer.flush()?;
             bitiodine::metrics::log_peak_rss("after dump-balances");
             info!("Done!");
         }
         Action::DumpAddresses => {
             let mut visitor = DumpAddresses::new();
-            if let Err(e) = chain.walk(&mut visitor) {
-                error!("Error walking blockchain: {e}");
-            }
+            chain.walk(&mut visitor)?;
+            visitor.done()?;
         }
         Action::DumpTxHashes => {
             let mut visitor = DumpTxHashes::new();
-            if let Err(e) = chain.walk(&mut visitor) {
-                error!("Error walking blockchain: {e}");
-            }
+            chain.walk(&mut visitor)?;
+            visitor.done()?;
         }
         Action::DataoutputFinder => {
             let mut visitor = DataOutputFinder::new();
-            if let Err(e) = chain.walk(&mut visitor) {
-                error!("Error walking blockchain: {e}");
-            }
+            chain.walk(&mut visitor)?;
+            visitor.done()?;
         }
         Action::DonationFinder => {
             let mut visitor = DonationFinder::new();
-            if let Err(e) = chain.walk(&mut visitor) {
-                error!("Error walking blockchain: {e}");
-            }
+            chain.walk(&mut visitor)?;
+            visitor.done()?;
         }
         Action::Merkle => {
             let mut visitor = MerkleVisitor::new();
-            if let Err(e) = chain.walk(&mut visitor) {
-                error!("Error walking blockchain: {e}");
-            } else {
-                info!("All Merkle roots verified successfully!");
-            }
+            chain.walk(&mut visitor)?;
+            visitor.done()?;
+            info!("All Merkle roots verified successfully!");
         }
     }
+    Ok(())
 }

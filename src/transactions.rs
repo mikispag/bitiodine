@@ -68,7 +68,9 @@ impl<'a> Transactions<'a> {
             )?;
         }
 
-        assert_eq!(slice.len(), 0);
+        if !slice.is_empty() {
+            return Err(ParseError::Invalid);
+        }
 
         Ok(())
     }
@@ -91,10 +93,11 @@ impl<'a> Transaction<'a> {
         // Save the initial position in two slices
         let mut init_slice = *slice;
 
-        sha256_hasher1.update(&slice[..4]);
-        let version = read_u32(slice)?;
+        let version_bytes = read_array::<4>(slice)?;
+        sha256_hasher1.update(version_bytes);
+        let version = u32::from_le_bytes(*version_bytes);
 
-        let marker = slice[0];
+        let marker = *slice.first().ok_or(ParseError::Eof)?;
         let txins_count: u64;
         let mut slice_inputs_and_outputs = *slice;
         if marker == 0x00 {
@@ -159,8 +162,9 @@ impl<'a> Transaction<'a> {
             }
         }
 
-        sha256_hasher1.update(&slice[..4]);
-        let lock_time = read_u32(slice)?;
+        let lock_time_bytes = read_array::<4>(slice)?;
+        sha256_hasher1.update(lock_time_bytes);
+        let lock_time = u32::from_le_bytes(*lock_time_bytes);
         let first_digest = sha256_hasher1.finalize();
         let second_digest = Sha256::digest(first_digest);
         let tx_hash: [u8; 32] = second_digest.into();
@@ -175,8 +179,13 @@ impl<'a> Transaction<'a> {
             slice: read_slice(&mut init_slice, init_slice_len - slice.len())?,
         };
 
+        if let Some(replaced) = output_items.remove(&tx.txid) {
+            for (_, item) in replaced {
+                visitor.visit_output_removed(item);
+            }
+        }
         if !cur_output_items.is_empty() {
-            output_items.insert(*Hash::from_slice(&tx_hash), cur_output_items);
+            output_items.insert(tx.txid, cur_output_items);
         }
 
         visitor.visit_transaction_end(tx, block_item, transaction_item);

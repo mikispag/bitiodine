@@ -11,25 +11,34 @@ env:
 
 jobs:
   test:
-    name: Build & Test
+    name: Build & Test (${{ matrix.toolchain }})
+    strategy:
+      matrix:
+        toolchain: [stable, "1.85.0"]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ matrix.toolchain }}
           components: clippy, rustfmt
 
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
+        if: matrix.toolchain == 'stable'
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        if: matrix.toolchain == 'stable'
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test --all-targets --all-features --verbose
+        run: cargo test --locked --all-targets --all-features --verbose
+
+      - name: Run tests without jemalloc
+        run: cargo test --locked --all-targets --no-default-features --verbose

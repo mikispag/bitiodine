@@ -162,9 +162,15 @@ impl Clusterizer {
     /// lexicographically smallest address in the cluster (canonical representative),
     /// computed per root tag without hashing.
     pub fn write_csv<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let root_for_tag = |mut tag: u32| {
+            while self.clusters.parent[tag as usize] != tag {
+                tag = self.clusters.parent[tag as usize];
+            }
+            tag as usize
+        };
         let mut root_to_min: Vec<Option<&CompactAddress>> = vec![None; self.clusters.parent.len()];
         for (address, &tag) in &self.clusters.map {
-            let root = self.clusters.parent[tag as usize] as usize;
+            let root = root_for_tag(tag);
             match &mut root_to_min[root] {
                 Some(min) => {
                     if address < *min {
@@ -175,8 +181,8 @@ impl Clusterizer {
             }
         }
         for (address, &tag) in &self.clusters.map {
-            let root = self.clusters.parent[tag as usize] as usize;
-            let rep = root_to_min[root].expect("finalized root tag must map to a cluster member");
+            let root = root_for_tag(tag);
+            let rep = root_to_min[root].expect("root tag must map to a cluster member");
             writeln!(writer, "{},{}", address, rep)?;
         }
         Ok(())
@@ -257,6 +263,10 @@ impl BlockChainVisitor for Clusterizer {
         transaction_item.output_values.push(txout.value);
 
         match txout.script.to_highlevel() {
+            HighLevel::PayToPubkey(pk) => {
+                // P2PKH-form public-key identifier, consistent with balance export.
+                Some(CompactAddress::from_hash160(&Hash160::from_data(pk), 0x00))
+            }
             HighLevel::PayToPubkeyHash(pkh) => {
                 Some(CompactAddress::from_hash160(Hash160::from_slice(pkh), 0x00))
             }

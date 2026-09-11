@@ -38,6 +38,15 @@ fn test_hash160_from_data() {
 }
 
 #[test]
+fn test_hash160_display_and_from_pretty_round_trip() {
+    let encoded = "b472a266d0bd89c13706a4132ccfb16f7c3b9fcb";
+    let parsed = Hash160::from_pretty(encoded).unwrap();
+    assert_eq!(parsed.to_string(), encoded);
+    assert_eq!(parsed, Hash160::from_data(b""));
+    assert!(Hash160::from_pretty("abcd").is_err());
+}
+
+#[test]
 fn test_zero_hash() {
     assert_eq!(ZERO_HASH.as_slice(), &[0u8; 32]);
     assert_eq!(

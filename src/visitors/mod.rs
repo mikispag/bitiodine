@@ -1,5 +1,5 @@
 use crate::block::Block;
-use crate::error::Result;
+use crate::error::{ParseResult, Result};
 use crate::transactions::{Transaction, TransactionInput, TransactionOutput};
 
 pub mod clusterizer;
@@ -32,7 +32,8 @@ pub trait BlockChainVisitor {
         _block: Block<'a>,
         _height: u64,
         _block_item: Self::BlockItem,
-    ) {
+    ) -> ParseResult<()> {
+        Ok(())
     }
 
     fn visit_transaction_begin(
@@ -56,6 +57,10 @@ pub trait BlockChainVisitor {
     ) -> Option<Self::OutputItem> {
         None
     }
+
+    /// Removes a retained output replaced by a historical duplicate transaction.
+    fn visit_output_removed(&mut self, _output_item: Self::OutputItem) {}
+
     fn visit_transaction_end<'a>(
         &mut self,
         _tx: Transaction<'a>,

@@ -17,7 +17,6 @@ impl Hash160 {
     pub fn from_pretty(s: &str) -> Result<Hash160, hex::FromHexError> {
         let mut buf = [0u8; 20];
         hex::decode_to_slice(s, &mut buf)?;
-        buf.reverse();
         Ok(Hash160(buf))
     }
 

@@ -7,8 +7,8 @@
 #   --blocks-dir  path to the bitcoind blocks directory (default: ~/.bitcoin/blocks)
 #   N             number of block files to process (default: 500)
 #
-# Safety: bitcoind must NOT be running against this directory (block files are
-# mapped and must not be mutated concurrently).
+# Use a stopped-node copy or filesystem snapshot so both indexing and traversal
+# see the same block data.
 set -euo pipefail
 
 BLOCKS_DIR="${HOME}/.bitcoin/blocks"
@@ -30,7 +30,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESULTS="$REPO_ROOT/bench/results.md"
 cd "$REPO_ROOT"
 
-cargo build --release
+cargo build --locked --release
 BIN="./target/release/bitiodine"
 
 OUT_DIR="$(mktemp -d)"
@@ -53,11 +53,8 @@ for action in clusterizer dump-balances; do
 
     WALL_S="$(awk -v s="$START_NS" -v e="$END_NS" 'BEGIN {printf "%.1f", (e - s) / 1e9}')"
     # Peak RSS logged by the binary itself (VmHWM from /proc/self/status, KiB).
-    RSS_MIB="$(grep -o 'Peak RSS (VmHWM)[^:]*: [0-9.]* MiB' "$OUT_DIR/$action.log" \
-        | tail -1 | grep -o '[0-9.]* MiB' | awk '{print $1}')"
-    if [ -z "$RSS_MIB" ]; then
-        RSS_MIB="n/a"
-    fi
+    RSS_MIB="$(awk '/Peak RSS \(VmHWM\)[^:]*: [0-9.]+ MiB/ {rss = $(NF - 1)}
+        END {print rss == "" ? "n/a" : rss}' "$OUT_DIR/$action.log")"
 
     echo "| $action | $WALL_S | $RSS_MIB |" >>"$RESULTS"
     echo "  $action: ${WALL_S}s, ${RSS_MIB} MiB"

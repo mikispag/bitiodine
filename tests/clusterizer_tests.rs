@@ -90,3 +90,30 @@ fn test_clusterizer_deterministic_representatives() {
 
     assert_eq!(actual_lines, expected_lines);
 }
+
+#[test]
+fn csv_uses_canonical_roots_before_finalization() {
+    use bitiodine::address::CompactAddress;
+    use bitiodine::hash160::Hash160;
+    use bitiodine::visitors::Clusterizer;
+
+    let mut clusterizer = Clusterizer::new();
+    let addresses: Vec<_> = (1..=4)
+        .map(|n| CompactAddress::from_hash160(&Hash160([n; 20]), 0))
+        .collect();
+    for address in &addresses {
+        clusterizer.clusters.make_set(*address);
+    }
+    clusterizer.clusters.union(&addresses[0], &addresses[1]);
+    clusterizer.clusters.union(&addresses[2], &addresses[3]);
+    clusterizer.clusters.union(&addresses[1], &addresses[3]);
+
+    let mut csv = Vec::new();
+    clusterizer.write_csv(&mut csv).unwrap();
+    let representative = addresses.iter().min().unwrap().to_string();
+    let csv = String::from_utf8(csv).unwrap();
+    assert_eq!(csv.lines().count(), 4);
+    for row in csv.lines() {
+        assert_eq!(row.split_once(',').unwrap().1, representative);
+    }
+}

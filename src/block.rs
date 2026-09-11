@@ -52,7 +52,7 @@ impl<'a> Block<'a> {
     }
 
     pub fn transactions(&self) -> Result<Transactions<'a>> {
-        Transactions::new(&self.0[80..])
+        Transactions::new(self.0.get(80..).ok_or(crate::error::EofError)?)
     }
 
     pub fn walk<V: BlockChainVisitor>(
@@ -61,6 +61,9 @@ impl<'a> Block<'a> {
         height: u64,
         output_items: &mut OutputMap<V::OutputItem>,
     ) -> ParseResult<()> {
+        if self.0.len() < 80 {
+            return Err(ParseError::Eof);
+        }
         let header = self.header();
         let mut block_item = visitor.visit_block_begin(*self, height);
         self.transactions()?.walk(
@@ -70,7 +73,6 @@ impl<'a> Block<'a> {
             &mut block_item,
             output_items,
         )?;
-        visitor.visit_block_end(*self, height, block_item);
-        Ok(())
+        visitor.visit_block_end(*self, height, block_item)
     }
 }

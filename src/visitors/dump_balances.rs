@@ -6,7 +6,7 @@ use foldhash::fast::RandomState;
 use crate::address::CompactAddress;
 use crate::block::Block;
 use crate::error::Result;
-use crate::hash::ZERO_HASH;
+use crate::hash::{Hash, ZERO_HASH};
 use crate::hash160::Hash160;
 use crate::script::HighLevel;
 use crate::transactions::{TransactionInput, TransactionOutput};
@@ -41,7 +41,7 @@ impl DumpBalances {
 }
 
 impl BlockChainVisitor for DumpBalances {
-    type BlockItem = ();
+    type BlockItem = bool;
     type TransactionItem = ();
     type OutputItem = (CompactAddress, i64);
     type DoneItem = (usize, String);
@@ -52,9 +52,18 @@ impl BlockChainVisitor for DumpBalances {
         }
     }
 
-    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) {}
+    fn visit_block_begin<'a>(&mut self, block: Block<'a>, height: u64) -> Self::BlockItem {
+        // The genesis coinbase is historical transaction data, but never enters
+        // Bitcoin's UTXO set. Other height-zero synthetic blocks are unaffected.
+        height == 0
+            && block.header().cur_hash()
+                == Hash::from_pretty(
+                    "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+                )
+                .expect("constant mainnet genesis hash")
+    }
 
-    fn visit_transaction_begin(&mut self, _hasher: &mut ()) {}
+    fn visit_transaction_begin(&mut self, _block_item: &mut Self::BlockItem) {}
 
     fn visit_transaction_input<'a>(
         &mut self,
@@ -68,22 +77,29 @@ impl BlockChainVisitor for DumpBalances {
             return;
         }
 
-        if let Some((address, value)) = output_item {
-            let prev_balance = self.balances.get(&address).copied().unwrap_or(0);
-            if prev_balance == value {
-                self.balances.remove(&address);
-            } else {
-                *self.balances.entry(address).or_insert(0) -= value;
-            }
+        if let Some(output_item) = output_item {
+            self.visit_output_removed(output_item);
+        }
+    }
+
+    fn visit_output_removed(&mut self, (address, value): Self::OutputItem) {
+        let prev_balance = self.balances.get(&address).copied().unwrap_or(0);
+        if prev_balance == value {
+            self.balances.remove(&address);
+        } else {
+            *self.balances.entry(address).or_insert(0) -= value;
         }
     }
 
     fn visit_transaction_output<'a>(
         &mut self,
         txout: TransactionOutput<'a>,
-        _block_item: &mut (),
+        is_genesis: &mut Self::BlockItem,
         _transaction_item: &mut (),
     ) -> Option<Self::OutputItem> {
+        if *is_genesis {
+            return None;
+        }
         let value = txout.value as i64;
         match txout.script.to_highlevel() {
             HighLevel::PayToPubkeyHash(pkh) => {

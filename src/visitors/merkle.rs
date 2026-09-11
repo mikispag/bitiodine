@@ -1,5 +1,5 @@
 use crate::block::Block;
-use crate::error::Result;
+use crate::error::{ParseError, ParseResult, Result};
 use crate::merkle::MerkleHasher;
 use crate::transactions::Transaction;
 use crate::visitors::BlockChainVisitor;
@@ -21,8 +21,16 @@ impl BlockChainVisitor for MerkleVisitor {
         Default::default()
     }
 
-    fn visit_block_end<'a>(&mut self, block: Block<'a>, _height: u64, hasher: MerkleHasher) {
-        assert_eq!(block.header().merkle_root(), &hasher.finish().unwrap());
+    fn visit_block_end<'a>(
+        &mut self,
+        block: Block<'a>,
+        _height: u64,
+        hasher: MerkleHasher,
+    ) -> ParseResult<()> {
+        if hasher.finish().as_ref() != Some(block.header().merkle_root()) {
+            return Err(ParseError::Invalid);
+        }
+        Ok(())
     }
 
     fn visit_transaction_begin(&mut self, _hasher: &mut MerkleHasher) {}
