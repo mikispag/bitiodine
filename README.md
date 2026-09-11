@@ -18,7 +18,7 @@ BitIodine supports legacy and SegWit transaction serialization, including Bitcoi
 
 | Script Type | Standard | Address Prefix | Status |
 | :--- | :--- | :--- | :--- |
-| **Pay-to-Pubkey (P2PK)** | Legacy (Genesis) | Raw compressed / uncompressed pubkey | ✅ Supported |
+| **Pay-to-Pubkey (P2PK)** | Legacy (Genesis) | `1...` public-key identifier | ✅ Supported |
 | **Pay-to-PubkeyHash (P2PKH)** | Legacy | `1...` (Base58) | ✅ Supported |
 | **Pay-to-ScriptHash (P2SH)** | BIP-16 | `3...` (Base58) | ✅ Supported |
 | **P2SH-wrapped SegWit (P2SH-P2WPKH / P2SH-P2WSH)** | BIP-141 / BIP-143 | `3...` (Base58) | ✅ Supported |
@@ -27,13 +27,13 @@ BitIodine supports legacy and SegWit transaction serialization, including Bitcoi
 | **Taproot / SegWit v1 (P2TR)** | BIP-341 / BIP-350 | `bc1p...` (Bech32m) | ✅ Supported |
 | **Future SegWit Witness Programs (v2–v16)** | BIP-141 / BIP-350 | `bc1...` (Bech32m) | ✅ Supported |
 | **Bare Multisig (`OP_CHECKMULTISIG`)** | Legacy / BIP-11 | M-of-N public keys | ✅ Supported |
-| **Null Data (`OP_RETURN`)** | Core 0.9+ | Arbitrary payload data | ✅ Supported |
+| **Null Data (`OP_RETURN`)** | Legacy / null data | Empty or single pushed payload | ✅ Supported, including PUSHDATA1/2/4 |
 | **Timelock and other nonstandard scripts** | BIP-65 / BIP-112, others | No inferred standard destination | Heuristic classification only |
 
 ### Core Parser Capabilities
 
 - ⚡ **Indexed Chain Traversal**: Indexes block headers and disk offsets before visiting the requested tip's ancestry or the most-work candidate. Block decoding buffers are bounded; the block index, UTXO state, and address/cluster maps grow with the dataset.
-- 👥 **Heuristic Address Clustering**: Multi-input clustering with rank-based Union-Find (`DisjointSet`), iterative path compression, and a filter for transactions with three or more equal output values. This filter does not reliably identify collaborative transactions: Payjoin and other patterns can cause false merges, and ordinary equal-value batches can be skipped. Cluster membership is evidence of possible common ownership, not proof.
+- 👥 **Heuristic Address Clustering**: Multi-input clustering with rank-based Union-Find (`DisjointSet`), iterative path compression, and a filter for transactions with three or more identical nonzero output values. This filter does not reliably identify collaborative transactions: Payjoin and other patterns can cause false merges, and ordinary equal-value batches can be skipped. Cluster membership is evidence of possible common ownership, not proof.
 - 🧩 **Pluggable Visitor Architecture**: Clean `BlockChainVisitor` trait to write custom analyzers, heuristics, and indexers.
 - 🛡️ **Established Hashing and Work Arithmetic**: Uses `sha2` and `ripemd` for hashes and `bitcoin` for target/work arithmetic.
 - 🖥️ **CLI with Dynamic Action Selection**: Run any visitor directly from the command line without recompiling.
@@ -48,9 +48,11 @@ Use a stopped-node copy or a filesystem snapshot of the Bitcoin Core blocks dire
    - The source node must retain the complete history (`prune=0`).
    - Pruned nodes delete early `blk*.dat` files (`blk00000.dat` onwards), preventing full historical analysis from Genesis.
 2. **Default Block Paths**:
-   - **Linux**: `~/.bitcoin/blocks/` (or `/var/lib/bitcoind/blocks/`)
+   - **Linux**: `~/.bitcoin/blocks/`
    - **macOS**: `~/Library/Application Support/Bitcoin/blocks/`
    - **Windows**: `%APPDATA%\Bitcoin\blocks\`
+
+For a custom location such as `/var/lib/bitcoind/blocks/`, pass `--blocks-dir` explicitly. Keep `xor.dat` alongside the block files if the source directory contains it. Selected files must be regular files with consecutive numbers starting at `blk00000.dat`; discovery reports missing files and invalid XOR keys as errors.
 
 ---
 
@@ -64,58 +66,85 @@ cargo build --locked --release
 
 The optimized executable will be located at `target/release/bitiodine`.
 
+The CLI enables jemalloc by default. To build with the system allocator, add `--no-default-features`.
+
 ---
 
 ## Usage
 
-```text
-A high-performance Bitcoin blockchain parser and address clusterizer in Rust.
-
-Usage: bitiodine [OPTIONS]
-
-Options:
-  -b, --blocks-dir <BLOCKS_DIR>  Path to the bitcoind blocks directory [default: ~/.bitcoin/blocks]
-  -o, --output <OUTPUT>          Path to the output file [default: clusters.csv]
-  -a, --action <ACTION>          Action / visitor to run [default: clusterizer]
-                                 [possible values: clusterizer, dump-balances, dump-addresses,
-                                  dump-tx-hashes, dataoutput-finder, donation-finder, merkle]
-      --max-blocks <MAX_BLOCKS>  Limit block files read (0 = no limit) [default: 0]
-      --chain-tip <CHAIN_TIP>    Select the chain ending at this block hash
-  -v...                          Sets the level of verbosity (-v for debug, -vv for trace)
-  -h, --help                     Print help
-  -V, --version                  Print version
+```bash
+./target/release/bitiodine --help
 ```
+
+| Option | Meaning | Default |
+| :--- | :--- | :--- |
+| `-b, --blocks-dir <BLOCKS_DIR>` | Source blocks directory | Platform-specific path above |
+| `-o, --output <OUTPUT>` | CSV destination for `clusterizer` and `dump-balances` | `clusters.csv` |
+| `-a, --action <ACTION>` | Visitor to run; choices listed below | `clusterizer` |
+| `--max-blocks <MAX_BLOCKS>` | Maximum number of **block files**, not blocks or a height | `0` (all files) |
+| `--chain-tip <CHAIN_TIP>` | End traversal at this independently accepted block hash | Most-work connected candidate |
+| `-v`, `-vv` | Debug or trace logging | Info logging |
+| `-h, --help` | Show help | |
+| `-V, --version` | Show version | |
+
+An explicit tip and every ancestor must be present in the selected files. Combining `--chain-tip` with a file limit that excludes that ancestry fails. The file limit alone does not identify a Core-accepted chain or a specific block height.
 
 ### Available Actions
 
 | Action | Description | Output |
 | :--- | :--- | :--- |
-| `clusterizer` *(default)* | Groups co-spent addresses using a common-ownership heuristic | CSV (`<address>,<cluster_id>`) |
+| `clusterizer` *(default)* | Groups co-spent addresses using a common-ownership heuristic | CSV (`<address>,<representative_address>`), no header |
 | `dump-balances` | Calculates balances from surviving address-associated UTXOs | CSV (`<balance_btc>,<identifier_hash>,<address>`) |
 | `dump-addresses` | Prints recognized output addresses and public-key identifiers; duplicates are retained | Stdout, one per line |
-| `dump-tx-hashes` | Logs transaction IDs at regular block intervals | Stdout |
+| `dump-tx-hashes` | Prints block summaries and transaction IDs at heights above 480,000 divisible by 1,000 | Stdout |
 | `dataoutput-finder` | Streams `OP_RETURN` payloads as lossless hexadecimal | Stdout CSV (`<txid>,<vout>,<payload_hex>`), no header |
 | `donation-finder` | Streams positive-value donation or unknown-script candidates | Stdout CSV (`<txid>,<vout>,<satoshis>,<script_hex>`), no header |
 | `merkle` | Verifies each selected block's transaction Merkle root against its header | Logs |
 
 P2PK outputs and bare-multisig participants use P2PKH identifiers derived from their public keys when extracting addresses; those identifiers are not the original output scripts. Balances and clustering recognize exact standard single-destination scripts and P2PK; they do not assign one owner to bare multisig. The mainnet genesis coinbase is excluded from balances, and overwritten historical duplicate coinbases replace prior UTXO credits. A successful command exits zero only after traversal, visitor finalization, and output flushing succeed; failed runs may have streamed partial stdout or updated visitor state.
 
+Cluster and balance CSV rows are unsorted. Cluster representatives are canonical address identifiers selected using the address type's ordering; only addresses participating in eligible merges appear in the cluster export. Balance rows have no header, omit zero balances, and format BTC values to eight decimal places. Their `identifier_hash` is the Base58 address's HASH160, or forty zero hex digits for witness addresses; use the full address column as the identifier.
+
+Finder output uses zero-based transaction output indexes and hexadecimal data so arbitrary bytes cannot corrupt CSV rows. The data finder recognizes bare `OP_RETURN` and `OP_RETURN` followed by one push; it does not combine multiple pushes. All logging goes to stderr, so stdout from the extraction actions can be redirected independently.
+
 ### Examples
 
-**Run address clusterizer against default bitcoin directory:**
+**Capture an accepted tip while Bitcoin Core is available:**
+
 ```bash
-./target/release/bitiodine -o clusters.csv
+BITIODINE_TIP="$(bitcoin-cli getbestblockhash)"
 ```
 
-**Dump address balances from a custom blocks path with debug logging:**
+Stop the source node cleanly or obtain a consistent snapshot that contains that tip and its ancestors. Replace the placeholder below with the resulting blocks directory; preserve its `xor.dat` if present.
+
 ```bash
-./target/release/bitiodine -b /var/lib/bitcoind/blocks -a dump-balances -o balances.csv -v
+BITIODINE_BLOCKS=/path/to/blocks-snapshot
+./target/release/bitiodine -b "$BITIODINE_BLOCKS" \
+  --chain-tip "$BITIODINE_TIP" -o clusters.csv
 ```
 
-**Find OP_RETURN data payloads:**
+**Dump address balances on the same chain:**
+
 ```bash
-./target/release/bitiodine -b /var/lib/bitcoind/blocks -a dataoutput-finder
+./target/release/bitiodine -b "$BITIODINE_BLOCKS" \
+  --chain-tip "$BITIODINE_TIP" -a dump-balances -o balances.csv -v
 ```
+
+**Extract OP_RETURN data from that chain:**
+
+```bash
+./target/release/bitiodine -b "$BITIODINE_BLOCKS" \
+  --chain-tip "$BITIODINE_TIP" -a dataoutput-finder > data-outputs.csv
+```
+
+**Explore the most-work candidate in the first 100 files:**
+
+```bash
+./target/release/bitiodine -b "$BITIODINE_BLOCKS" \
+  --max-blocks 100 -a merkle
+```
+
+The last command checks transaction Merkle roots on a candidate chain; it does not establish that Core accepted that chain or validate witness commitments.
 
 ---
 
@@ -132,11 +161,11 @@ flowchart TD
     end
 
     subgraph Core["2. BitIodine Parser"]
-        READ["Bounded File Reads and XOR Decoding"]
+        READ["Header Scan<br/>File Reads and XOR Decoding"]
         SEQ["Header and Offset Index<br/>Trusted Tip or Most-Work Candidate"]
-        FRAMER["Block & Header Framing<br/>80-byte header, Merkle root, timestamp"]
+        FRAMER["Selected Block Reads<br/>XOR Decoding and Framing"]
         TXP["Transaction and Witness Deserializer<br/>txid computation"]
-        SCRIPT["Script & Bytecode Engine<br/>P2PK, P2PKH, P2SH, SegWit v0-v16, Taproot, OP_RETURN"]
+        SCRIPT["Script Recognizer<br/>P2PK, P2PKH, P2SH, SegWit v0-v16, Taproot, OP_RETURN"]
         UTXO["OutputMap UTXO Tracker<br/>HashMap of Unspent Output Items"]
     end
 
@@ -174,11 +203,13 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     autonumber
+    participant C as Caller
     participant BC as BlockChain Engine
     participant V as BlockChainVisitor
     participant UTXO as OutputMap (UTXO State)
 
-    Note over BC,V: Index and select the full chain before callbacks
+    C->>BC: walk(visitor)
+    Note over BC,V: Index files and select the chain before callbacks
     Note over BC,V: For each selected block in sequential height order
     BC->>V: visit_block_begin(block, height)
     Note over BC,V: For each transaction in block
@@ -186,21 +217,31 @@ sequenceDiagram
 
     loop For each Transaction Input
         BC->>UTXO: Lookup & consume spent output (prev_hash, prev_index)
-        UTXO-->>BC: Some(spent_output_item)
+        UTXO-->>BC: Option(spent_output_item)
         BC->>V: visit_transaction_input(txin, block_item, tx_item, spent_output_item)
     end
 
     loop For each Transaction Output
         BC->>V: visit_transaction_output(txout, block_item, tx_item)
-        V-->>BC: Option<OutputItem> (e.g. Address, Value)
-        BC->>UTXO: Store new unspent output item
+        V-->>BC: Option(OutputItem), e.g. Address and Value
+        Note over BC: Stage returned output items for this transaction
     end
 
+    BC->>BC: Parse witness and locktime, compute txid
+    BC->>UTXO: Remove retained outputs with the same txid
+    loop Each output replaced by a duplicate transaction
+        BC->>V: visit_output_removed(output_item)
+    end
+    BC->>UTXO: Store staged outputs by txid and output index
     BC->>V: visit_transaction_end(tx, block_item, tx_item)
     BC->>V: visit_block_end(block, height, block_item)
+    V-->>BC: Result
 
     Note over BC,V: Block-end errors abort traversal
-    Note over BC,V: After walk succeeds, the caller invokes done() and handles errors
+    BC-->>C: Result(block_count, tip_hash, retained_outputs)
+    C->>V: done()
+    V-->>C: Result
+    Note over C: Check finalization errors and flush external CSV writers
 ```
 
 ### Address Clustering Pipeline (`Clusterizer`)
@@ -214,7 +255,7 @@ flowchart LR
     end
 
     subgraph Filter["Heuristic Filters"]
-        CJ{"CoinJoin Check<br/>≥3 equal output amounts?"}
+        CJ{"Equal-Value Filter<br/>3+ identical nonzero outputs?"}
     end
 
     subgraph UnionFind["DisjointSet (Union-Find)"]
@@ -225,7 +266,7 @@ flowchart LR
     end
 
     subgraph Output["Output Clusters"]
-        CLUSTER["Cluster Root Tag:<br/>{Address A, Address B, Address C}"]
+        CLUSTER["CSV: Address, Representative Address"]
     end
 
     Inputs --> CJ
@@ -241,25 +282,49 @@ flowchart LR
 
 - **`blockchain`**: Discovers `blk*.dat` files, decodes XOR records, indexes parent links and disk offsets, and selects the supplied tip's ancestry or the most-work connected candidate before updating visitor state. It does not consult Core's active-chain database or support live reorg rollback.
 - **`block` & `header`**: Zero-copy block framing and 80-byte header deserialization (version, previous block hash, Merkle root, timestamp, bits, nonce).
-- **`transactions` & `script`**: High-level Bitcoin transaction, input, output, and script bytecode interpreter (P2PK, P2PKH, P2SH, SegWit P2WPKH/P2WSH, Taproot P2TR, Multisig, `OP_RETURN`).
+- **`transactions` & `script`**: Transaction and witness deserialization, txid computation, exact standard-script recognition, and heuristic classification of other scripts. Witness bytes are consumed but no wtxid or full Script validation is provided.
 - **`hash` & `hash160`**: Type-safe wrappers for hashes. Block and transaction hash display reverses the internal digest bytes; Hash160 text preserves byte order.
 - **`visitors`**: Implementation of analysis plugins conforming to `BlockChainVisitor`.
+
+### Library API
+
+`BlockChain::read(path, max_files)` is safe and returns `ParseResult<BlockChain>`. Use `with_tip(hash)` to anchor traversal. `walk(&mut visitor)` returns the selected block count (including genesis), selected tip hash, and retained visitor output items. It does not call `done()`; the caller must finalize the visitor and flush any external writers.
+
+Visitor output items belong to the UTXO tracker until spent or replaced. `visit_output_removed` handles historical duplicate-txid replacements; `visit_block_end` returns `ParseResult<()>` and can stop traversal on a sink or validation error. On failure, discard partially updated visitor state before retrying.
+
+Build the API reference and its usage example locally:
+
+```bash
+cargo doc --locked --no-deps
+```
+
+Open `target/doc/bitiodine/index.html`. The crate-level example is also available in [src/lib.rs](src/lib.rs), and the callback contract in [src/visitors/mod.rs](src/visitors/mod.rs).
 
 ---
 
 ## Testing
 
-Run the test suite:
+Run the checks used by CI, plus the library documentation example:
 
 ```bash
-cargo test --locked
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --all-targets --all-features
+cargo test --locked --all-targets --no-default-features
+cargo test --locked --doc
 ```
 
-Run clippy linter:
+CI runs both test configurations on Rust 1.85 and stable. The regression suite covers chain ordering and work selection, explicit tips, XOR framing, truncated transactions, script recognition, historical balances, and CLI/sink failures.
+
+## Benchmarking
+
+On Linux, run the benchmark harness against a consistent blocks directory:
 
 ```bash
-cargo clippy --locked --all-targets -- -D warnings
+./bench/bench.sh --blocks-dir "$BITIODINE_BLOCKS" 100
 ```
+
+The final argument limits block files (default: 500). The harness measures both CSV actions and appends results to [bench/results.md](bench/results.md). It uses unanchored candidate selection. That page's existing measurements predate the correctness fixes and indexed traversal; they are historical comparisons, not performance or correctness guarantees for the current implementation.
 
 ---
 

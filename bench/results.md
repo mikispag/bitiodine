@@ -1,5 +1,24 @@
 # BitIodine memory benchmarks
 
+The measurements below describe the historical commits named in each section.
+They predate `9bb1d9e`, which introduced indexed chain selection and corrected
+script recognition, historical balances and output handling. No production-scale
+benchmark has been recorded for that implementation. Output counts and hashes
+below are historical observations; matching an old baseline does not establish
+agreement with Bitcoin Core or correctness of the current analysis.
+
+To record a new comparison on Linux, use a consistent blocks snapshot:
+
+```bash
+./bench/bench.sh --blocks-dir /path/to/blocks-snapshot 100
+```
+
+The limit counts files, not block height. The harness selects the most-work
+stored candidate without a trusted tip, runs both CSV actions, and appends a
+timestamped section tagged with the current commit. Keep the corpus and chain
+selection identical when comparing runs. See [README.md](../README.md) for
+accepted-tip analysis and current correctness checks.
+
 Peak RSS is measured as `VmHWM` (process high-water mark) read by the binary itself
 from `/proc/self/status` — identical to GNU `time -v` "Maximum resident set size".
 Corpus: first N block files of the local mainnet blocks dir, `--max-blocks N`.
@@ -19,7 +38,7 @@ CSV 6.3 GB. Walk ≈ 6.5 min, `done()` + CSV ≈ 6.5 min (double serialization +
 
 Notes: the CSV String transient built in `done()` and the global sort buffer in
 `write_csv` dominate the tail of the clusterizer run; OutputMap+DisjointSet maps
-dominate the rest. Peak is at end-of-run, confirming the memory model in PLAN.md.
+dominate the rest. Peak was measured at the end of the run.
 
 ## Phase 1 — drop CSV double-serialization and sort transients (commit b8b44af)
 
@@ -80,4 +99,3 @@ intact (no hashed/truncated address keys). Per-entry OutputMap cost did shrink
 ~175 → ~70-100 B as modeled; at this corpus scale that is ~0.8 GiB of the total
 reduction. The transient CSV String (6.3 GB) and sort buffer (1.5 GB) are fully
 eliminated — visible directly in the 44% wall-time reduction.
-
