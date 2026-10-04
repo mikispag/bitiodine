@@ -1,7 +1,6 @@
 use std::io;
 
 const MIB: u64 = 1024 * 1024;
-const MAX_BYTES: u64 = 32 * 1024 * MIB;
 const HEADROOM: u64 = 128 * MIB;
 
 /// Startup allocation budget for the disk-backed CLI, including traversal overhead.
@@ -14,6 +13,12 @@ pub struct MemoryBudget {
 }
 
 impl MemoryBudget {
+    pub fn performance_warning(&self) -> Option<&'static str> {
+        (self.total < 32 * 1024 * MIB).then_some(
+            "Clustering memory budget is below 32 GiB; performance may be poor or clustering may fail due to insufficient memory.",
+        )
+    }
+
     pub fn detect() -> io::Result<Self> {
         let mut system = sysinfo::System::new();
         system.refresh_memory();
@@ -29,8 +34,8 @@ impl MemoryBudget {
     }
 
     fn from_available(available: u64) -> io::Result<Self> {
-        // Divide first to avoid overflowing even when the detector reports u64::MAX.
-        let total = (available / 5 * 4).min(MAX_BYTES);
+        // Round 80% down to whole bytes without overflowing even for u64::MAX.
+        let total = available / 5 * 4 + available % 5 * 4 / 5;
         if total < 512 * MIB {
             return Err(io::Error::other(format!(
                 "Insufficient available RAM for resumable clustering: {} MiB (80% budget {} MiB; need at least 512 MiB)",
@@ -119,17 +124,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn budget_obeys_free_memory_fraction_and_hardware_ceiling() {
-        for available in [640 * MIB, 8 * 1024 * MIB, 32 * 1024 * MIB, u64::MAX] {
+    fn budget_uses_eighty_percent_without_a_fixed_ceiling() {
+        for available in [
+            640 * MIB,
+            8 * 1024 * MIB,
+            32 * 1024 * MIB,
+            64 * 1024 * MIB,
+            256 * 1024 * MIB,
+            u64::MAX,
+        ] {
             let budget = MemoryBudget::from_available(available).unwrap();
-            assert!(budget.total <= MAX_BYTES);
-            assert!(u128::from(budget.total) * 5 <= u128::from(available) * 4);
+            assert_eq!(u128::from(budget.total), u128::from(available) * 4 / 5);
             assert_eq!(budget.sqlite + budget.traversal + HEADROOM, budget.total);
         }
-        assert_eq!(
-            MemoryBudget::from_available(u64::MAX).unwrap().total,
-            MAX_BYTES
-        );
+        for remainder in 0..5 {
+            let available = 64 * 1024 * MIB + remainder;
+            let budget = MemoryBudget::from_available(available).unwrap();
+            assert_eq!(u128::from(budget.total), u128::from(available) * 4 / 5);
+        }
         assert!(MemoryBudget::from_available(0).is_err());
         assert!(MemoryBudget::from_available(512 * MIB).is_err());
     }
@@ -139,6 +151,22 @@ mod tests {
         assert_eq!(limited_available(8 * MIB, 5 * MIB, 2 * MIB), 3 * MIB);
         assert_eq!(limited_available(MIB, 5 * MIB, 2 * MIB), MIB);
         assert_eq!(limited_available(MIB, MIB, 2 * MIB), 0);
+    }
+
+    #[test]
+    fn performance_warning_depends_on_budget_not_available_ram() {
+        for available in [640 * MIB, 32 * 1024 * MIB, 40 * 1024 * MIB - 1] {
+            let budget = MemoryBudget::from_available(available).unwrap();
+            let warning = budget.performance_warning().unwrap();
+            assert!(warning.contains("performance") && warning.contains("fail"));
+            assert_eq!(u128::from(budget.total), u128::from(available) * 4 / 5);
+        }
+        for available in [40 * 1024 * MIB, 64 * 1024 * MIB, u64::MAX] {
+            assert!(MemoryBudget::from_available(available)
+                .unwrap()
+                .performance_warning()
+                .is_none());
+        }
     }
 
     #[cfg(target_os = "linux")]

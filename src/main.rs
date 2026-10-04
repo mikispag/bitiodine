@@ -1,6 +1,6 @@
 use clap::{Parser, ValueEnum};
 use env_logger::Builder;
-use log::{error, info, LevelFilter};
+use log::{error, info, warn, LevelFilter};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -43,7 +43,7 @@ pub enum Action {
     name = "bitiodine",
     version,
     author = "Michele Spagnuolo <miki@miki.it>",
-    about = "A Bitcoin blockchain parser and resumable address clusterizer with reorg recovery. Clustering memory budget: 80% of available RAM, at most 32 GiB."
+    about = "A Bitcoin blockchain parser and resumable address clusterizer with reorg recovery. Clustering memory budget: 80% of available RAM. Budgets below 32 GiB trigger a performance warning."
 )]
 struct Cli {
     /// Path to the bitcoind blocks directory
@@ -130,10 +130,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let budget = if cli.action == Action::Clusterizer {
         let budget = memory::MemoryBudget::detect()?;
         info!(
-            "Clustering memory budget: {} MiB (80% of {} MiB available RAM, capped at 32 GiB); SQLite {} MiB, traversal {} MiB",
+            "Clustering memory budget: {} MiB (80% of {} MiB available RAM); SQLite {} MiB, traversal {} MiB",
             budget.total / 1048576, budget.available / 1048576,
             budget.sqlite / 1048576, budget.traversal / 1048576
         );
+        if let Some(message) = budget.performance_warning() {
+            warn!("{message}");
+        }
         Some(budget)
     } else {
         None

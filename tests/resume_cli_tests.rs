@@ -315,7 +315,14 @@ fn help_explains_automatic_resume_reorg_recovery_and_memory_limit() {
     assert!(help.contains("--checkpoint-dir"), "{help}");
     assert!(help.contains("resum"), "{help}");
     assert!(help.contains("reorg"), "{help}");
-    assert!(help.contains("32") && help.contains("memory"), "{help}");
+    assert!(
+        help.contains("80% of available ram") && help.contains("memory"),
+        "{help}"
+    );
+    assert!(
+        help.contains("below 32 gib") && help.contains("warning"),
+        "{help}"
+    );
 }
 
 #[test]
