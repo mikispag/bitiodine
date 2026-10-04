@@ -5,13 +5,15 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use bitiodine::cluster_store::ClusterStore;
 use bitiodine::hash::Hash;
 use bitiodine::visitors::{
-    BlockChainVisitor, Clusterizer, DataOutputFinder, DonationFinder, DumpAddresses, DumpBalances,
-    DumpTxHashes, MerkleVisitor,
+    BlockChainVisitor, DataOutputFinder, DonationFinder, DumpAddresses, DumpBalances, DumpTxHashes,
+    MerkleVisitor, ResumableClusterizer,
 };
 use bitiodine::BlockChain;
 
+mod memory;
 mod output;
 
 #[cfg(feature = "jemalloc")]
@@ -20,7 +22,7 @@ static GLOBAL_ALLOCATOR: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// Group co-spent Bitcoin addresses using an ownership heuristic
+    /// Resume disk-backed address clustering with automatic reorg recovery
     Clusterizer,
     /// Dump all balances and associated addresses
     DumpBalances,
@@ -41,7 +43,7 @@ pub enum Action {
     name = "bitiodine",
     version,
     author = "Michele Spagnuolo <miki@miki.it>",
-    about = "A high-performance Bitcoin blockchain parser and address clusterizer in Rust."
+    about = "A Bitcoin blockchain parser and resumable address clusterizer with reorg recovery. Clustering memory budget: 80% of available RAM, at most 32 GiB."
 )]
 struct Cli {
     /// Path to the bitcoind blocks directory
@@ -51,6 +53,10 @@ struct Cli {
     /// Path to the output file (used by clusterizer and dump-balances)
     #[arg(short = 'o', long = "output", default_value = "clusters.csv")]
     output: PathBuf,
+
+    /// Persistent cluster state directory (default: <output>.state); resume and recover reorgs automatically
+    #[arg(long)]
+    checkpoint_dir: Option<PathBuf>,
 
     /// Stop after processing at most this many block files (0 = no limit)
     #[arg(long, default_value_t = 0)]
@@ -115,14 +121,33 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    if cli.checkpoint_dir.is_some() && cli.action != Action::Clusterizer {
+        return Err("--checkpoint-dir is only supported by --action clusterizer".into());
+    }
     if matches!(cli.action, Action::Clusterizer | Action::DumpBalances) {
         output::validate_output(&cli.blocks_dir, &cli.output)?;
     }
+    let budget = if cli.action == Action::Clusterizer {
+        let budget = memory::MemoryBudget::detect()?;
+        info!(
+            "Clustering memory budget: {} MiB (80% of {} MiB available RAM, capped at 32 GiB); SQLite {} MiB, traversal {} MiB",
+            budget.total / 1048576, budget.available / 1048576,
+            budget.sqlite / 1048576, budget.traversal / 1048576
+        );
+        Some(budget)
+    } else {
+        None
+    };
     info!(
         "Opening Bitcoin blockchain from: {}",
         cli.blocks_dir.display()
     );
-    let chain = BlockChain::read(&cli.blocks_dir, cli.max_blocks)?;
+    let chain = match &budget {
+        Some(budget) => {
+            BlockChain::read_with_memory_limit(&cli.blocks_dir, cli.max_blocks, budget.traversal)?
+        }
+        None => BlockChain::read(&cli.blocks_dir, cli.max_blocks)?,
+    };
     let chain = match cli.chain_tip {
         Some(tip) => chain.with_tip(Hash::from_pretty(&tip)?),
         None => chain,
@@ -138,15 +163,22 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.action {
         Action::Clusterizer => {
-            let mut visitor = Clusterizer::new();
-            chain.walk(&mut visitor)?;
-            let (count, _) = visitor.done()?;
-            info!(
-                "Writing {count} clustered addresses to {}",
-                cli.output.display()
-            );
+            let state_dir = cli.checkpoint_dir.unwrap_or_else(|| {
+                let mut path = cli.output.as_os_str().to_os_string();
+                path.push(".state");
+                PathBuf::from(path)
+            });
+            output::validate_state_dir(&cli.blocks_dir, &cli.output, &state_dir)?;
+            let mut store =
+                ClusterStore::open_with_memory_limit(&state_dir, budget.unwrap().sqlite)?;
+            info!("Using resumable cluster state in {}", state_dir.display());
+            let mut visitor = ResumableClusterizer::with_store(&mut store);
+            chain.walk_clusterizer_resumable(&mut visitor)?;
+            visitor.done()?;
+            info!("Writing clustered addresses to {}", cli.output.display());
+            output::validate_state_dir(&cli.blocks_dir, &cli.output, &state_dir)?;
             output::write_atomic(&cli.blocks_dir, &cli.output, |writer| {
-                visitor.write_csv(writer)
+                store.write_csv(writer).map_err(std::io::Error::other)
             })?;
             bitiodine::metrics::log_peak_rss("after clusterizer");
             info!("Done!");

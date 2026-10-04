@@ -193,7 +193,7 @@ impl Clusterizer {
 /// based on presence of 3 or more identical non-zero output amounts.
 /// Sorts `output_values` in place; the slice is not used afterwards, so no heap
 /// allocation or hashing is needed on this hot path.
-fn is_coinjoin(output_values: &mut [u64]) -> bool {
+pub(crate) fn is_coinjoin(output_values: &mut [u64]) -> bool {
     if output_values.len() < 3 {
         return false;
     }
@@ -210,6 +210,25 @@ fn is_coinjoin(output_values: &mut [u64]) -> bool {
         }
     }
     false
+}
+
+pub(crate) fn output_address(txout: TransactionOutput<'_>) -> Option<CompactAddress> {
+    match txout.script.to_highlevel() {
+        HighLevel::PayToPubkey(pk) => {
+            Some(CompactAddress::from_hash160(&Hash160::from_data(pk), 0x00))
+        }
+        HighLevel::PayToPubkeyHash(pkh) => {
+            Some(CompactAddress::from_hash160(Hash160::from_slice(pkh), 0x00))
+        }
+        HighLevel::PayToScriptHash(pkh) => {
+            Some(CompactAddress::from_hash160(Hash160::from_slice(pkh), 0x05))
+        }
+        HighLevel::PayToWitnessPubkeyHash(ref w)
+        | HighLevel::PayToWitnessScriptHash(ref w)
+        | HighLevel::PayToWitnessTaproot(ref w)
+        | HighLevel::PayToWitnessGeneral(ref w) => Some(CompactAddress::from_witness_program(w)),
+        _ => None,
+    }
 }
 
 impl BlockChainVisitor for Clusterizer {
@@ -262,25 +281,7 @@ impl BlockChainVisitor for Clusterizer {
     ) -> Option<Self::OutputItem> {
         transaction_item.output_values.push(txout.value);
 
-        match txout.script.to_highlevel() {
-            HighLevel::PayToPubkey(pk) => {
-                // P2PKH-form public-key identifier, consistent with balance export.
-                Some(CompactAddress::from_hash160(&Hash160::from_data(pk), 0x00))
-            }
-            HighLevel::PayToPubkeyHash(pkh) => {
-                Some(CompactAddress::from_hash160(Hash160::from_slice(pkh), 0x00))
-            }
-            HighLevel::PayToScriptHash(pkh) => {
-                Some(CompactAddress::from_hash160(Hash160::from_slice(pkh), 0x05))
-            }
-            HighLevel::PayToWitnessPubkeyHash(ref w)
-            | HighLevel::PayToWitnessScriptHash(ref w)
-            | HighLevel::PayToWitnessTaproot(ref w)
-            | HighLevel::PayToWitnessGeneral(ref w) => {
-                Some(CompactAddress::from_witness_program(w))
-            }
-            _ => None,
-        }
+        output_address(txout)
     }
 
     fn visit_transaction_end<'a>(

@@ -7,6 +7,11 @@ benchmark has been recorded for that implementation. Output counts and hashes
 below are historical observations; matching an old baseline does not establish
 agreement with Bitcoin Core or correctness of the current analysis.
 
+These runs also predate the default SQLite-backed resumable clusterizer and its
+memory budgets. They measured the earlier in-memory UTXO and Union-Find maps;
+their timings and peak RSS do not characterize the persistent implementation.
+No performance benchmark of that implementation has been recorded here.
+
 To record a new comparison on Linux, use a consistent blocks snapshot:
 
 ```bash

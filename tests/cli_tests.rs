@@ -74,7 +74,13 @@ impl Fixture {
     }
 
     fn run_with_args(&self, action: &str, output: &Path, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_bitiodine"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_bitiodine"));
+        if action == "clusterizer" {
+            command
+                .arg("--checkpoint-dir")
+                .arg(self.0.with_extension("state"));
+        }
+        command
             .arg("--blocks-dir")
             .arg(&self.0)
             .args(["--action", action, "--output"])
@@ -88,6 +94,10 @@ impl Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.0).unwrap();
+        let state = self.0.with_extension("state");
+        if state.exists() {
+            fs::remove_dir_all(state).unwrap();
+        }
     }
 }
 

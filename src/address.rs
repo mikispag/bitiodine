@@ -87,6 +87,31 @@ const WITNESS_TAG: u8 = 0x80;
 pub struct CompactAddress([u8; COMPACT_ADDRESS_SIZE]);
 
 impl CompactAddress {
+    /// Canonical fixed-width bytes used by persistent cluster state.
+    pub fn as_bytes(&self) -> &[u8; COMPACT_ADDRESS_SIZE] {
+        &self.0
+    }
+
+    /// Decodes a canonical compact address, including version, length and padding checks.
+    pub fn from_bytes(raw: [u8; COMPACT_ADDRESS_SIZE]) -> Option<Self> {
+        if raw[0] < WITNESS_TAG {
+            if raw[21..].iter().any(|&byte| byte != 0) {
+                return None;
+            }
+        } else {
+            let version = raw[0].checked_sub(WITNESS_TAG)?;
+            let len = raw[41] as usize;
+            if version > 16
+                || !(2..=40).contains(&len)
+                || (version == 0 && len != 20 && len != 32)
+                || raw[1 + len..41].iter().any(|&byte| byte != 0)
+            {
+                return None;
+            }
+        }
+        Some(Self(raw))
+    }
+
     pub fn from_hash160(hash160: &Hash160, version: u8) -> Self {
         debug_assert!(version < WITNESS_TAG);
         let mut raw = [0u8; COMPACT_ADDRESS_SIZE];

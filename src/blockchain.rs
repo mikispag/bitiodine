@@ -10,7 +10,7 @@ use crate::block::{Block, MAINNET_MAGIC};
 use crate::error::{ParseError, ParseResult};
 use crate::hash::{Hash, ZERO_HASH};
 use crate::header::BlockHeader;
-use crate::visitors::BlockChainVisitor;
+use crate::visitors::{BlockChainVisitor, ResumableClusterizer};
 
 pub type OutputMap<T> = HashMap<Hash, crate::transactions::OutputItemList<T>>;
 
@@ -55,6 +55,23 @@ pub struct BlockChain {
     files: Vec<BlockFile>,
     xor_key: [u8; 8],
     tip: Option<Hash>,
+    memory_limit: Option<u64>,
+}
+
+fn check_memory_limit(limit: Option<u64>, files: usize, blocks: usize) -> ParseResult<()> {
+    if let Some(limit) = limit {
+        // Includes path/discovery storage, the decoding buffer, and transient
+        // capacity growth in the header index, hash tables and chain selection.
+        let required = 4_008_192u64
+            .saturating_add((files as u64).saturating_mul(4096))
+            .saturating_add((blocks as u64).saturating_mul(1024));
+        if required > limit {
+            return Err(ParseError::Chain(format!(
+                "Traversal memory budget exceeded: requires at least {required} bytes, limit is {limit} bytes"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn apply_xor(bytes: &mut [u8], key: &[u8; 8], offset: u64) {
@@ -79,11 +96,43 @@ impl BlockChain {
     /// Use a stable copy or a stopped node: changes between discovery, indexing and
     /// traversal are errors. Parsing uses owned buffers and does not memory-map files.
     pub fn read<P: AsRef<Path>>(blocks_dir: P, max_files: usize) -> ParseResult<Self> {
-        let directory = blocks_dir.as_ref();
-        let xor_key = match std::fs::read(directory.join("xor.dat")) {
-            Ok(bytes) => bytes.try_into().map_err(|_| {
-                ParseError::Chain("xor.dat must contain exactly eight bytes".into())
-            })?,
+        Self::read_limited(blocks_dir.as_ref(), max_files, None)
+    }
+
+    /// Applies a conservative allocation budget to discovery, indexing and decoding.
+    /// Visitor-owned state and retained outputs are outside this budget.
+    pub fn read_with_memory_limit<P: AsRef<Path>>(
+        blocks_dir: P,
+        max_files: usize,
+        bytes: u64,
+    ) -> ParseResult<Self> {
+        Self::read_limited(blocks_dir.as_ref(), max_files, Some(bytes))
+    }
+
+    /// Limits later indexing and decoding; discovery has already completed.
+    /// Visitor-owned state and retained outputs are outside this budget.
+    pub fn with_memory_limit(mut self, bytes: u64) -> Self {
+        self.memory_limit = Some(bytes);
+        self
+    }
+
+    fn read_limited(
+        directory: &Path,
+        max_files: usize,
+        memory_limit: Option<u64>,
+    ) -> ParseResult<Self> {
+        check_memory_limit(memory_limit, 0, 0)?;
+        let xor_key = match File::open(directory.join("xor.dat")) {
+            Ok(mut file) => {
+                if file.metadata()?.len() != 8 {
+                    return Err(ParseError::Chain(
+                        "xor.dat must contain exactly eight bytes".into(),
+                    ));
+                }
+                let mut bytes = [0; 8];
+                file.read_exact(&mut bytes)?;
+                bytes
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => [0; 8],
             Err(e) => return Err(e.into()),
         };
@@ -102,6 +151,7 @@ impl BlockChain {
                 continue;
             }
             let number: usize = number.parse().map_err(|_| ParseError::Invalid)?;
+            check_memory_limit(memory_limit, paths.len() + 1, 0)?;
             paths.push((number, entry.path()));
         }
         paths.sort_unstable();
@@ -132,6 +182,7 @@ impl BlockChain {
             files,
             xor_key,
             tip: None,
+            memory_limit,
         })
     }
 
@@ -151,6 +202,7 @@ impl BlockChain {
     }
 
     fn index(&self) -> ParseResult<Vec<IndexedBlock>> {
+        check_memory_limit(self.memory_limit, self.files.len(), 0)?;
         let mut blocks = Vec::new();
         let mut known = std::collections::HashSet::new();
         for (file_index, file) in self.files.iter().enumerate() {
@@ -232,7 +284,9 @@ impl BlockChain {
                     return Err(file.error(offset, ParseError::Invalid));
                 }
                 let hash = header.cur_hash();
-                if known.insert(hash) {
+                if !known.contains(&hash) {
+                    check_memory_limit(self.memory_limit, self.files.len(), blocks.len() + 1)?;
+                    known.insert(hash);
                     blocks.push(IndexedBlock {
                         hash,
                         previous: *header.prev_hash(),
@@ -262,13 +316,111 @@ impl BlockChain {
         visitor: &mut V,
     ) -> ParseResult<(u64, Hash, OutputMap<V::OutputItem>)> {
         let blocks = self.index()?;
+        check_memory_limit(self.memory_limit, self.files.len(), blocks.len())?;
         let path = select_chain(&blocks, self.tip)?;
         let tip = blocks[*path.last().unwrap()].hash;
         info!("Selected {} blocks ending at {}", path.len(), tip);
         let mut output_items = OutputMap::default();
-        let mut buffer = Vec::new();
+        self.walk_path(
+            visitor,
+            &blocks,
+            &path,
+            0,
+            &mut output_items,
+            |_, _, _, _| Ok(()),
+        )?;
+        info!("OutputMap entries at end of walk: {}", output_items.len());
+        Ok((path.len() as u64, tip, output_items))
+    }
+
+    /// Resumes disk-backed clustering and recovers from a changed selected chain.
+    ///
+    /// A shallow reorg rolls back completed blocks to the common ancestor. Deeper
+    /// reorgs clear derived state and replay from genesis. Each fully parsed block
+    /// commits atomically after a source metadata check; failures abort the open
+    /// transaction. UTXOs and clustering state remain in the store, and no second
+    /// in-memory copy is constructed. Returns total selected block count and tip.
+    pub fn walk_clusterizer_resumable(
+        &self,
+        visitor: &mut ResumableClusterizer<'_>,
+    ) -> ParseResult<(u64, Hash)> {
+        let result = (|| {
+            let blocks = self.index()?;
+            check_memory_limit(self.memory_limit, self.files.len(), blocks.len())?;
+            let path = select_chain(&blocks, self.tip)?;
+            let tip = blocks[*path.last().unwrap()].hash;
+            info!("Selected {} blocks ending at {}", path.len(), tip);
+            self.check_files()?;
+            let saved_tip = visitor.store().tip()?;
+            let mut common = saved_tip.map(|(height, _)| height.min(path.len() as u64 - 1));
+            while let Some(height) = common {
+                if visitor.store().hash_at(height)? == Some(blocks[path[height as usize]].hash) {
+                    break;
+                }
+                common = height.checked_sub(1);
+            }
+            if saved_tip.is_some() {
+                if common != saved_tip.map(|(height, _)| height) {
+                    info!("Selected chain changed; recovering clustering from its common ancestor");
+                }
+                visitor.store_mut().rewind(common)?;
+            }
+            let start = match visitor.store().tip()? {
+                Some((height, hash)) => {
+                    info!("Resuming clustering after block {height} ({hash})");
+                    height as usize + 1
+                }
+                None => {
+                    info!("No saved clustering state on selected chain; replaying from genesis");
+                    0
+                }
+            };
+            // This visitor retains outputs in SQLite and always returns None.
+            let mut output_items = OutputMap::default();
+            self.walk_path(
+                visitor,
+                &blocks,
+                &path,
+                start,
+                &mut output_items,
+                |height, _, visitor, _| {
+                    if height as usize + 1 == path.len() {
+                        self.check_files()?;
+                    } else {
+                        self.files[blocks[path[height as usize]].file].check()?;
+                    }
+                    visitor.store_mut().commit_block()
+                },
+            )?;
+            Ok((path.len() as u64, tip))
+        })();
+        if result.is_err() {
+            visitor.store_mut().abort_block()?;
+        }
+        result
+    }
+
+    fn check_files(&self) -> ParseResult<()> {
+        self.files.iter().try_for_each(BlockFile::check)
+    }
+
+    fn walk_path<V: BlockChainVisitor>(
+        &self,
+        visitor: &mut V,
+        blocks: &[IndexedBlock],
+        path: &[usize],
+        start: usize,
+        output_items: &mut OutputMap<V::OutputItem>,
+        mut after_block: impl FnMut(u64, Hash, &mut V, &OutputMap<V::OutputItem>) -> ParseResult<()>,
+    ) -> ParseResult<()> {
+        // Reserve once under a memory limit so Vec growth cannot temporarily
+        // exceed the four-megabyte decoding budget.
+        let mut buffer = match self.memory_limit {
+            Some(_) => Vec::with_capacity(4_000_000),
+            None => Vec::new(),
+        };
         let mut open_file: Option<(usize, File)> = None;
-        for (height, &index) in path.iter().enumerate() {
+        for (height, &index) in path.iter().enumerate().skip(start) {
             let block = &blocks[index];
             let source = &self.files[block.file];
             if open_file.as_ref().map(|(n, _)| *n) != Some(block.file) {
@@ -290,14 +442,11 @@ impl BlockChain {
                 return Err(source.error(block.offset, "Block header changed after indexing"));
             }
             parsed
-                .walk(visitor, height as u64, &mut output_items)
+                .walk(visitor, height as u64, output_items)
                 .map_err(|error| source.error(block.offset, error))?;
+            after_block(height as u64, block.hash, visitor, output_items)?;
         }
-        for file in &self.files {
-            file.check()?;
-        }
-        info!("OutputMap entries at end of walk: {}", output_items.len());
-        Ok((path.len() as u64, tip, output_items))
+        self.check_files()
     }
 }
 

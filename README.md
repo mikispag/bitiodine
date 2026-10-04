@@ -8,6 +8,8 @@ A Bitcoin blockchain parser and address clusterizer written in Rust.
 
 BitIodine indexes raw `blk*.dat` files produced by `bitcoind`, selects a connected chain, then parses it in height order. Supply `--chain-tip` with a block hash accepted by Bitcoin Core to anchor the analysis to that chain; otherwise it selects the candidate with the most cumulative work among the supplied blocks. Its extensible **Visitor pattern** supports address balances, `OP_RETURN` extraction, and co-spend clustering using Union-Find.
 
+CLI clustering stores UTXOs and Union-Find state in SQLite, commits each completed block, and resumes automatically on subsequent runs. Recent chain reorganizations are rolled back; reorganizations beyond retained undo history trigger a fresh replay from genesis.
+
 ---
 
 ## Features & Modern `bitcoind` Compatibility
@@ -32,7 +34,8 @@ BitIodine supports legacy and SegWit transaction serialization, including Bitcoi
 
 ### Core Parser Capabilities
 
-- ⚡ **Indexed Chain Traversal**: Indexes block headers and disk offsets before visiting the requested tip's ancestry or the most-work candidate. Block decoding buffers are bounded; the block index, UTXO state, and address/cluster maps grow with the dataset.
+- ⚡ **Indexed Chain Traversal**: Indexes block headers and disk offsets before visiting the requested tip's ancestry or the most-work candidate. File reads use owned decoding buffers; transaction and script views borrow those buffers. CLI clustering bounds the in-memory index and keeps growing UTXO and cluster state on disk.
+- 💾 **Resumable Clustering**: SQLite transactions preserve completed blocks across restarts, with 144 blocks of undo history for automatic reorg recovery. Page caching and disk spill avoid keeping the full clustering state in RAM.
 - 👥 **Heuristic Address Clustering**: Multi-input clustering with rank-based Union-Find (`DisjointSet`), iterative path compression, and a filter for transactions with three or more identical nonzero output values. This filter does not reliably identify collaborative transactions: Payjoin and other patterns can cause false merges, and ordinary equal-value batches can be skipped. Cluster membership is evidence of possible common ownership, not proof.
 - 🧩 **Pluggable Visitor Architecture**: Clean `BlockChainVisitor` trait to write custom analyzers, heuristics, and indexers.
 - 🛡️ **Established Hashing and Work Arithmetic**: Uses `sha2` and `ripemd` for hashes and `bitcoin` for target/work arithmetic.
@@ -53,6 +56,12 @@ Use a stopped-node copy or a filesystem snapshot of the Bitcoin Core blocks dire
    - **Windows**: `%APPDATA%\Bitcoin\blocks\`
 
 For a custom location such as `/var/lib/bitcoind/blocks/`, pass `--blocks-dir` explicitly. Keep `xor.dat` alongside the block files if the source directory contains it. Selected files must be regular files with consecutive numbers starting at `blk00000.dat`; discovery reports missing files and invalid XOR keys as errors.
+
+### Memory and Disk Requirements
+
+At startup, CLI clustering sets its allocation budget to the smaller of **32 GiB** and **80% of detected available RAM**. On Linux, available memory also accounts for cgroup headroom. Half of the budget goes to SQLite, whose LRU page-cache target uses 75% of that half; 128 MiB is reserved for other work, and the remainder bounds file discovery, the header index, chain selection, and block decoding. SQLite enforces a heap limit, disables memory mapping, and spills dirty pages and temporary work to disk. Startup fails when the resulting total budget is below 512 MiB; traversal fails before its conservative allocation estimate would exceed its assigned budget.
+
+This makes disk-backed clustering suitable for machines with 32 GiB or less, provided the selected chain's header index fits its budget. The database, indexes, and recent undo records still need substantial disk space and grow with the dataset; an SSD is helpful. These are startup allocation limits, not a process-wide OS memory limit or protection against other processes consuming available RAM later. `dump-balances` and the original library `Clusterizer` retain growing state in memory; the CLI clustering policy does not bound those analyzers.
 
 ---
 
@@ -83,6 +92,7 @@ The CLI enables jemalloc by default. To build with the system allocator, add `--
 | `-a, --action <ACTION>` | Visitor to run; choices listed below | `clusterizer` |
 | `--max-blocks <MAX_BLOCKS>` | Maximum number of **block files**, not blocks or a height | `0` (all files) |
 | `--chain-tip <CHAIN_TIP>` | End traversal at this independently accepted block hash | Most-work connected candidate |
+| `--checkpoint-dir <CHECKPOINT_DIR>` | Persistent SQLite working directory; rejected for actions other than `clusterizer` | Output path with `.state` appended, e.g. `clusters.csv.state` |
 | `-v`, `-vv` | Debug or trace logging | Info logging |
 | `-h, --help` | Show help | |
 | `-V, --version` | Show version | |
@@ -93,7 +103,7 @@ An explicit tip and every ancestor must be present in the selected files. Combin
 
 | Action | Description | Output |
 | :--- | :--- | :--- |
-| `clusterizer` *(default)* | Groups co-spent addresses using a common-ownership heuristic | CSV (`<address>,<representative_address>`), no header |
+| `clusterizer` *(default)* | Resumes persistent co-spend clustering using a common-ownership heuristic | CSV (`<address>,<representative_address>`), no header |
 | `dump-balances` | Calculates balances from surviving address-associated UTXOs | CSV (`<balance_btc>,<identifier_hash>,<address>`) |
 | `dump-addresses` | Prints recognized output addresses and public-key identifiers; duplicates are retained | Stdout, one per line |
 | `dump-tx-hashes` | Prints block summaries and transaction IDs at heights above 480,000 divisible by 1,000 | Stdout |
@@ -109,6 +119,16 @@ CSV exports reject destinations that alias source block files or `xor.dat`, incl
 
 Finder output uses zero-based transaction output indexes. For bare `OP_RETURN` or a single push, the third field remains the payload in lowercase hexadecimal (empty for bare `OP_RETURN`). For multiple pushes it is `script:<complete_script_hex>`, including `OP_RETURN`; this preserves push boundaries, numeric markers, and opcode encodings. Malformed or non-push tails are not extracted. All logging goes to stderr, so stdout from the extraction actions can be redirected independently.
 
+### Resuming and Recovering from Reorgs
+
+The default clustering action creates `clusters.csv.state/` beside `clusters.csv`. Use `--checkpoint-dir` to keep the working database at a different location or to reuse it when changing the CSV destination. The directory contains `clusters.sqlite3`, SQLite journal files, and an exclusive `cluster.lock`; one process can use a state directory at a time.
+
+Each block's UTXO changes, cluster merges, undo records, and height/hash are committed together after parsing and source checks succeed. An interrupted or failed block is rolled back, while earlier committed blocks remain available for the next run. CSV export happens after traversal and is published atomically, so an export failure preserves the previous CSV and does not discard completed database work.
+
+On restart, BitIodine reindexes the selected files and compares the persisted block hashes with the selected chain. It resumes after the last committed block when ancestry still matches. Otherwise it restores the common ancestor using up to 144 blocks of retained undo records and processes the replacement branch. If the required undo records have expired, it clears derived state and automatically replays from genesis. Reopening at the already completed tip skips transaction replay and exports the saved result.
+
+Recovery operates between runs against consistent source snapshots. It does not watch a live node, obtain a validated tip, or make changing block files safe to analyze. Continue to supply an independently accepted `--chain-tip` and all of its ancestors. Keep the working state outside the Bitcoin Core data directory; it contains derived data, never a replacement for the source blocks.
+
 ### Examples
 
 **Capture an accepted tip while Bitcoin Core is available:**
@@ -123,6 +143,13 @@ Stop the source node cleanly or obtain a consistent snapshot that contains that 
 BITIODINE_BLOCKS=/path/to/blocks-snapshot
 ./target/release/bitiodine -b "$BITIODINE_BLOCKS" \
   --chain-tip "$BITIODINE_TIP" -o clusters.csv
+```
+
+Rerun the same command after an interruption, or with a newer consistent snapshot and accepted tip, to resume from `clusters.csv.state`. To choose a separate persistent directory:
+
+```bash
+./target/release/bitiodine -b "$BITIODINE_BLOCKS" \
+  --chain-tip "$BITIODINE_TIP" --checkpoint-dir ./cluster-state -o clusters.csv
 ```
 
 **Dump address balances on the same chain:**
@@ -168,16 +195,19 @@ flowchart TD
         FRAMER["Selected Block Reads<br/>XOR Decoding and Framing"]
         TXP["Transaction and Witness Deserializer<br/>txid computation"]
         SCRIPT["Script Recognizer<br/>P2PK, P2PKH, P2SH, SegWit v0-v16, Taproot, OP_RETURN"]
-        UTXO["OutputMap UTXO Tracker<br/>HashMap of Unspent Output Items"]
+        UTXO["Optional Library OutputMap<br/>In-Memory Unspent Output Items"]
     end
 
     subgraph Visitors["3. Pluggable Visitor Engine (BlockChainVisitor)"]
         CLUST["Clusterizer<br/>Union-Find DisjointSet with Equal-Value Filter"]
+        RESUME["ResumableClusterizer<br/>Default CLI Clustering"]
         BAL["DumpBalances<br/>Balance Accounting Engine"]
         ADDR["DumpAddresses<br/>Address Extractor"]
         MERK["MerkleVisitor<br/>Header Merkle Root Verifier"]
         DATA["DataOutputFinder<br/>OP_RETURN Payload Extractor"]
     end
+
+    DB["SQLite Working State<br/>UTXOs, Union-Find, Block Hashes, 144-Block Undo"]
 
     subgraph Sinks["4. Output Sinks"]
         CSV["CSV Files<br/>clusters.csv / balances.csv"]
@@ -194,6 +224,8 @@ flowchart TD
     TXP --> Visitors
 
     CLUST --> CSV
+    RESUME <--> DB
+    DB --> CSV
     BAL --> CSV
     ADDR --> STDOUT
     MERK --> LOGS
@@ -201,6 +233,8 @@ flowchart TD
 ```
 
 ### Visitor Event Lifecycle & Traversal Flow
+
+The following diagram describes the general `walk` API. `walk_clusterizer_resumable` uses the same parser callbacks, but its visitor reads and spends UTXOs through SQLite and returns no in-memory output items. It begins a database transaction at block start; traversal commits only after block parsing and source checks succeed, and aborts the transaction on failure.
 
 ```mermaid
 sequenceDiagram
@@ -247,7 +281,9 @@ sequenceDiagram
     Note over C: Check finalization errors and flush external CSV writers
 ```
 
-### Address Clustering Pipeline (`Clusterizer`)
+### Address Clustering Pipeline (In-Memory Library `Clusterizer`)
+
+The persistent visitor applies the same transaction heuristic using database-backed Union-Find rows and canonical representatives. It does not build a second `DisjointSet` or UTXO map in Rust.
 
 ```mermaid
 flowchart LR
@@ -283,8 +319,9 @@ flowchart LR
 
 ### Module Breakdown
 
-- **`blockchain`**: Discovers `blk*.dat` files, decodes XOR records, indexes parent links and disk offsets, and selects the supplied tip's ancestry or the most-work connected candidate before updating visitor state. It does not consult Core's active-chain database or support live reorg rollback.
-- **`block` & `header`**: Zero-copy block framing and 80-byte header deserialization (version, previous block hash, Merkle root, timestamp, bits, nonce).
+- **`blockchain`**: Discovers `blk*.dat` files, decodes XOR records, indexes parent links and disk offsets, and selects the supplied tip's ancestry or the most-work connected candidate before updating visitor state. Resumable clustering checks persisted ancestry and recovers from reorganizations between runs. It does not consult Core's active-chain database or follow a live node.
+- **`cluster_store`**: SQLite UTXOs, Union-Find rows, per-block transactions, retained undo history, bounded page caching, and streaming CSV export.
+- **`block` & `header`**: Borrowed block and 80-byte header views over the traversal's owned decoding buffer (version, previous block hash, Merkle root, timestamp, bits, nonce).
 - **`transactions` & `script`**: Transaction and witness deserialization, txid computation, exact standard-script recognition, and heuristic classification of other scripts. Noncanonical CompactSize encodings and superfluous witness serialization are rejected. Witness elements are available through visitor callbacks, and `Transaction::wtxid()` hashes the full serialization on demand. Witness commitment and full Script validation are not provided. Native witness recognition starts at mainnet height 481,824.
 - **`hash` & `hash160`**: Type-safe wrappers for hashes. Block and transaction hash display reverses the internal digest bytes; Hash160 text preserves byte order.
 - **`visitors`**: Implementation of analysis plugins conforming to `BlockChainVisitor`.
@@ -292,6 +329,12 @@ flowchart LR
 ### Library API
 
 `BlockChain::read(path, max_files)` is safe and returns `ParseResult<BlockChain>`. Use `with_tip(hash)` to anchor traversal. `walk(&mut visitor)` returns the selected block count (including genesis), selected tip hash, and retained visitor output items. It does not call `done()`; the caller must finalize the visitor and flush any external writers.
+
+For persistent clustering, open a `cluster_store::ClusterStore`, borrow it with `visitors::ResumableClusterizer::with_store`, and call `walk_clusterizer_resumable`. This returns the full selected block count and tip; retained outputs stay in the database. `ClusterStore::write_csv` streams the result without constructing a global cluster map. The original `visitors::Clusterizer` and `walk` remain available for in-memory analysis.
+
+Library callers choose their own budgets with `ClusterStore::open_with_memory_limit(directory, sqlite_bytes)` and `BlockChain::read_with_memory_limit(blocks_dir, max_files, traversal_bytes)`. The former sets a process-wide SQLite heap limit; an already lower SQLite limit takes precedence. The latter bounds discovery, indexing, chain selection, and decoding, excluding visitor-owned state and retained output maps. `with_memory_limit(bytes)` applies that traversal budget after discovery has already completed. The CLI's available-RAM detection and budget split are not automatically applied by these library APIs.
+
+Constructor migration: the trait's `BlockChainVisitor::new()` now requires `Self: Default`. Generic code calling `V::new()` needs `V: BlockChainVisitor + Default`; custom visitors can implement `Default` or use an explicit constructor instead. Existing built-in visitor constructors are unchanged. The persistent visitor requires `ResumableClusterizer::with_store` so that it always has a valid store.
 
 Visitor output items belong to the UTXO tracker until spent or replaced. `visit_output_removed` handles historical duplicate-txid replacements; `visit_block_end` returns `ParseResult<()>` and can stop traversal on a sink or validation error. On failure, discard partially updated visitor state before retrying.
 
@@ -319,7 +362,7 @@ cargo test --locked --all-targets --no-default-features
 cargo test --locked --doc
 ```
 
-CI runs both test configurations on Rust 1.85 and stable. The regression suite covers chain ordering and work selection, explicit tips, XOR framing, truncated transactions, script recognition, historical balances, and CLI/sink failures.
+CI runs both test configurations on Rust 1.85 and stable. The regression suite covers chain ordering and work selection, explicit tips, XOR framing, truncated transactions, script recognition, historical balances, and CLI/sink failures. Persistent-clustering tests compare CSV and complete UTXO state with uninterrupted in-memory analysis across extension, shallow and deep reorgs, failed blocks, and memory-budget failures.
 
 An opt-in integration test compares sampled blocks, transactions, and Merkle roots against `rust-bitcoin`. It only reads existing files and never starts a node or invokes RPC:
 
@@ -336,7 +379,7 @@ On Linux, run the benchmark harness against a consistent blocks directory:
 ./bench/bench.sh --blocks-dir "$BITIODINE_BLOCKS" 100
 ```
 
-The final argument limits block files (default: 500). The harness measures both CSV actions and appends results to [bench/results.md](bench/results.md). It uses unanchored candidate selection. That page's existing measurements predate the correctness fixes and indexed traversal; they are historical comparisons, not performance or correctness guarantees for the current implementation.
+The final argument limits block files (default: 500). The harness measures both CSV actions and appends results to [bench/results.md](bench/results.md). It uses unanchored candidate selection. That page's existing measurements predate the correctness fixes, indexed traversal, and disk-backed clustering default; they are historical comparisons, not performance, RAM-use, or correctness guarantees for the current implementation. No performance measurements for the persistent implementation are reported here.
 
 ---
 

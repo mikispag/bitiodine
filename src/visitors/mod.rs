@@ -9,6 +9,7 @@ pub mod dump_addresses;
 pub mod dump_balances;
 pub mod dump_tx_hashes;
 pub mod merkle;
+pub mod resumable_clusterizer;
 
 pub use clusterizer::Clusterizer;
 pub use dataoutput_finder::DataOutputFinder;
@@ -17,6 +18,7 @@ pub use dump_addresses::DumpAddresses;
 pub use dump_balances::DumpBalances;
 pub use dump_tx_hashes::DumpTxHashes;
 pub use merkle::MerkleVisitor;
+pub use resumable_clusterizer::ResumableClusterizer;
 
 /// Receives blocks and transactions in the chain order selected by
 /// [`BlockChain::walk`](crate::BlockChain::walk).
@@ -48,7 +50,12 @@ pub trait BlockChainVisitor {
     type DoneItem;
 
     /// Creates a visitor with its initial state.
-    fn new() -> Self;
+    fn new() -> Self
+    where
+        Self: Default,
+    {
+        Self::default()
+    }
 
     /// Starts a block at its zero-based height in the selected chain.
     fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) -> Self::BlockItem;
