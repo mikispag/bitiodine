@@ -37,5 +37,5 @@ same-file = "1.0"
 opt-level = 3
 debug = false
 debug-assertions = false
-lto = "thin"
+lto = "fat"
 codegen-units = 1
