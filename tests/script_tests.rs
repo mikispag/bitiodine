@@ -251,3 +251,74 @@ fn test_script_truth_values_use_the_final_sign_bit() {
         HighLevel::Invalid
     );
 }
+
+#[test]
+fn segwit_activation_is_independent_of_the_block_timestamp() {
+    let mut bytes = vec![0x00, 0x14];
+    bytes.extend([7; 20]);
+    // Block timestamps need not increase. A block at activation height can
+    // have a timestamp below the timestamp of mainnet's actual activation block.
+    let script = Script::new(&bytes, 1_503_539_856, 481_824);
+    assert!(matches!(
+        script.to_highlevel(),
+        HighLevel::PayToWitnessPubkeyHash(_)
+    ));
+    assert!(matches!(
+        Script::new(&bytes, 1_503_539_858, 481_823).to_highlevel(),
+        HighLevel::Donation
+    ));
+}
+
+#[test]
+fn multi_push_op_return_preserves_script_encoding() {
+    for bytes in [
+        &b"\x6a\x01a\x01b"[..],
+        &b"\x6a\x5d\x02ab"[..], // Numeric protocol marker followed by payload.
+        &b"\x6a\x4c\x01a\x4d\x01\x00b"[..], // Nonminimal push encodings.
+        &b"\x6a\x00\x4f\x60"[..], // OP_0, OP_1NEGATE, and OP_16.
+    ] {
+        assert_eq!(
+            Script::new(bytes, 1_700_000_000, 800_000).to_highlevel(),
+            HighLevel::DataOutputScript(bytes)
+        );
+    }
+}
+
+#[test]
+fn op_return_rejects_malformed_and_non_push_tails() {
+    for bytes in [
+        &b"\x6a\x01a\x02b"[..],                // Truncated direct push.
+        &b"\x6a\x01a\x4c"[..],                 // Missing PUSHDATA1 length.
+        &b"\x6a\x01a\x4d\x01"[..],             // Truncated PUSHDATA2 length.
+        &b"\x6a\x01a\x4e\x01\x00\x00\x00"[..], // Missing payload.
+        &b"\x6a\x01a\x61\x01b"[..],            // NOP between pushes.
+        &b"\x6a\x01a\x50"[..],                 // OP_RESERVED.
+    ] {
+        assert_eq!(
+            Script::new(bytes, 1_700_000_000, 800_000).to_highlevel(),
+            HighLevel::Invalid,
+            "{}",
+            hex::encode(bytes)
+        );
+    }
+}
+
+#[test]
+fn hybrid_pubkeys_require_a_valid_curve_point_and_matching_parity() {
+    for prefix in [2u8, 3] {
+        let mut compressed =
+            hex::decode("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+                .unwrap();
+        compressed[0] = prefix;
+        let key = bitcoin::secp256k1::PublicKey::from_slice(&compressed).unwrap();
+        let mut hybrid = key.serialize_uncompressed();
+        hybrid[0] = prefix + 4;
+        assert!(is_valid_pubkey(&hybrid));
+        hybrid[0] ^= 1;
+        assert!(!is_valid_pubkey(&hybrid));
+    }
+    let mut off_curve = [0; 65];
+    off_curve[0] = 6;
+    assert!(!is_valid_pubkey(&off_curve));
+    assert!(!is_valid_pubkey(&off_curve[..64]));
+}

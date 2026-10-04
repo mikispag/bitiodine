@@ -42,3 +42,6 @@ jobs:
 
       - name: Run tests without jemalloc
         run: cargo test --locked --all-targets --no-default-features --verbose
+
+      - name: Run documentation tests
+        run: cargo test --locked --doc

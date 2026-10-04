@@ -15,6 +15,8 @@ pub enum HighLevel<'a> {
     PayToMultisig(u32, Vec<&'a [u8]>),
     PayToScriptHash(&'a [u8; 20]),
     DataOutput(&'a [u8]),
+    /// Complete OP_RETURN script containing multiple pushes, preserving their encoding.
+    DataOutputScript(&'a [u8]),
     Challenge(ChallengeType<'a>),
     Unknown(Script<'a>),
     Donation,
@@ -72,7 +74,7 @@ impl<'a> Script<'a> {
 
         // Check for SegWit v0-v16 Witness Programs (BIP-141 / BIP-341 / BIP-350)
         // Format: OP_n <push len 2..40> <data>
-        if self.timestamp >= 1503539857 && script_slice.len() >= 4 && script_slice.len() <= 42 {
+        if self.height >= 481_824 && script_slice.len() >= 4 && script_slice.len() <= 42 {
             let first = script_slice[0];
             let push_len = script_slice[1] as usize;
             if (first == 0x00 || (0x51..=0x60).contains(&first))
@@ -149,15 +151,30 @@ impl<'a> Script<'a> {
             return res;
         }
 
-        // OP_RETURN followed by one data push, including PUSHDATA1/2/4.
+        // Preserve the complete script for multiple pushes; concatenating their
+        // payloads loses boundaries and protocol markers such as OP_13.
         if script_slice.first() == Some(&0x6a) {
             let mut payload = &script_slice[1..];
-            if payload.is_empty() {
-                return HighLevel::DataOutput(&[]);
+            let mut single_payload = &[][..];
+            let mut pushes = 0;
+            while !payload.is_empty() {
+                // Bytecode::read skips NOPs. Require a literal push opcode here
+                // so an arbitrary script suffix is not mistaken for data.
+                if !(payload[0] <= 0x4f || (0x51..=0x60).contains(&payload[0])) {
+                    return HighLevel::Invalid;
+                }
+                match Bytecode::read(&mut payload, self.height) {
+                    Ok(OP_PUSH(data)) => {
+                        single_payload = data;
+                        pushes += 1;
+                    }
+                    _ => return HighLevel::Invalid,
+                }
             }
-            return match Bytecode::read(&mut payload, self.height) {
-                Ok(OP_PUSH(data)) if payload.is_empty() => HighLevel::DataOutput(data),
-                _ => HighLevel::Invalid,
+            return if pushes <= 1 {
+                HighLevel::DataOutput(single_payload)
+            } else {
+                HighLevel::DataOutputScript(script_slice)
             };
         }
 
@@ -400,10 +417,13 @@ pub fn is_valid_pubkey(pubkey: &[u8]) -> bool {
         return false;
     }
 
-    matches!(
-        (pubkey[0], pubkey.len()),
-        (0x02, 33) | (0x03, 33) | (0x04, 65)
-    )
+    match (pubkey[0], pubkey.len()) {
+        (0x02, 33) | (0x03, 33) | (0x04, 65) => true,
+        // Historical hybrid encodings remain valid under legacy consensus.
+        // libsecp256k1 checks the curve point and the prefix's Y parity bit.
+        (0x06 | 0x07, 65) => bitcoin::secp256k1::PublicKey::from_slice(pubkey).is_ok(),
+        _ => false,
+    }
 }
 
 pub fn bytes_to_bool(bytes: &[u8]) -> bool {

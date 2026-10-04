@@ -21,9 +21,18 @@ struct BlockFile {
 }
 
 impl BlockFile {
+    fn error(&self, offset: u64, error: impl std::fmt::Display) -> ParseError {
+        ParseError::Chain(format!(
+            "{} at byte offset {offset}: {error}",
+            self.path.display()
+        ))
+    }
+
     fn check(&self) -> ParseResult<()> {
-        let metadata = std::fs::metadata(&self.path)?;
-        if metadata.len() != self.len || metadata.modified()? != self.modified {
+        let metadata = std::fs::metadata(&self.path).map_err(|error| self.error(0, error))?;
+        if metadata.len() != self.len
+            || metadata.modified().map_err(|error| self.error(0, error))? != self.modified
+        {
             return Err(ParseError::Chain(format!(
                 "Block file changed during analysis: {}",
                 self.path.display()
@@ -151,18 +160,23 @@ impl BlockChain {
                 file_index + 1,
                 self.files.len()
             );
-            let mut reader = BufReader::new(File::open(&file.path)?);
+            let mut reader =
+                BufReader::new(File::open(&file.path).map_err(|error| file.error(0, error))?);
             let mut offset = 0;
             while offset < file.len {
                 let count = (file.len - offset).min(8) as usize;
                 let mut raw_frame = [0; 8];
-                reader.read_exact(&mut raw_frame[..count])?;
+                reader
+                    .read_exact(&mut raw_frame[..count])
+                    .map_err(|error| file.error(offset, error))?;
                 // Padding starts only at a record boundary and fills the rest of
                 // the file. A zero ciphertext header can also begin a real record.
                 if raw_frame[..count].iter().all(|b| *b == 0) {
                     let mut tail = [0; 8192];
                     let all_zero = loop {
-                        let count = reader.read(&mut tail)?;
+                        let count = reader
+                            .read(&mut tail)
+                            .map_err(|error| file.error(offset, error))?;
                         if count == 0 {
                             break true;
                         }
@@ -173,27 +187,34 @@ impl BlockChain {
                     if all_zero {
                         break;
                     }
-                    reader.seek(SeekFrom::Start(offset + count as u64))?;
+                    reader
+                        .seek(SeekFrom::Start(offset + count as u64))
+                        .map_err(|error| file.error(offset, error))?;
                 }
                 let mut frame = raw_frame;
                 apply_xor(&mut frame[..count], &self.xor_key, offset);
                 if count < 8 || frame[..4] != MAINNET_MAGIC.to_le_bytes() {
-                    return Err(if count < 8 {
-                        ParseError::Eof
-                    } else {
-                        ParseError::Invalid
-                    });
+                    return Err(file.error(
+                        offset,
+                        if count < 8 {
+                            ParseError::Eof
+                        } else {
+                            ParseError::Invalid
+                        },
+                    ));
                 }
                 let len = u32::from_le_bytes(frame[4..].try_into().unwrap());
                 if !(81..=4_000_000).contains(&len) {
-                    return Err(ParseError::Invalid);
+                    return Err(file.error(offset, ParseError::Invalid));
                 }
                 let end = offset + 8 + u64::from(len);
                 if end > file.len {
-                    return Err(ParseError::Eof);
+                    return Err(file.error(offset, ParseError::Eof));
                 }
                 let mut bytes = [0; 80];
-                reader.read_exact(&mut bytes)?;
+                reader
+                    .read_exact(&mut bytes)
+                    .map_err(|error| file.error(offset, error))?;
                 apply_xor(&mut bytes, &self.xor_key, offset + 8);
                 let header = BlockHeader::new(&bytes);
                 let bits = header.bits();
@@ -204,11 +225,11 @@ impl BlockChain {
                     || (exponent > 33 && mantissa > 0xff)
                     || (exponent > 32 && mantissa > 0xffff)
                 {
-                    return Err(ParseError::Invalid);
+                    return Err(file.error(offset, ParseError::Invalid));
                 }
                 let target = Target::from_compact(CompactTarget::from_consensus(bits));
                 if target == Target::ZERO {
-                    return Err(ParseError::Invalid);
+                    return Err(file.error(offset, ParseError::Invalid));
                 }
                 let hash = header.cur_hash();
                 if known.insert(hash) {
@@ -221,7 +242,9 @@ impl BlockChain {
                         work: target.to_work(),
                     });
                 }
-                reader.seek(SeekFrom::Start(end))?;
+                reader
+                    .seek(SeekFrom::Start(end))
+                    .map_err(|error| file.error(offset, error))?;
                 offset = end;
             }
             file.check()?;
@@ -247,23 +270,28 @@ impl BlockChain {
         let mut open_file: Option<(usize, File)> = None;
         for (height, &index) in path.iter().enumerate() {
             let block = &blocks[index];
+            let source = &self.files[block.file];
             if open_file.as_ref().map(|(n, _)| *n) != Some(block.file) {
-                let file = &self.files[block.file];
-                file.check()?;
-                open_file = Some((block.file, File::open(&file.path)?));
+                source.check()?;
+                open_file = Some((
+                    block.file,
+                    File::open(&source.path).map_err(|error| source.error(block.offset, error))?,
+                ));
             }
             let file = &mut open_file.as_mut().unwrap().1;
-            file.seek(SeekFrom::Start(block.offset))?;
+            file.seek(SeekFrom::Start(block.offset))
+                .map_err(|error| source.error(block.offset, error))?;
             buffer.resize(block.len as usize, 0);
-            file.read_exact(&mut buffer)?;
+            file.read_exact(&mut buffer)
+                .map_err(|error| source.error(block.offset, error))?;
             apply_xor(&mut buffer, &self.xor_key, block.offset);
             let parsed = Block(&buffer);
             if parsed.header().cur_hash() != block.hash {
-                return Err(ParseError::Chain(
-                    "Block header changed after indexing".into(),
-                ));
+                return Err(source.error(block.offset, "Block header changed after indexing"));
             }
-            parsed.walk(visitor, height as u64, &mut output_items)?;
+            parsed
+                .walk(visitor, height as u64, &mut output_items)
+                .map_err(|error| source.error(block.offset, error))?;
         }
         for file in &self.files {
             file.check()?;

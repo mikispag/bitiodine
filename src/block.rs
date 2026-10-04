@@ -1,6 +1,6 @@
 use crate::blockchain::OutputMap;
 use crate::buffer_operations::{read_array, read_slice, read_u32};
-use crate::error::{ParseError, ParseResult, Result};
+use crate::error::{ParseError, ParseResult};
 use crate::header::BlockHeader;
 use crate::transactions::Transactions;
 use crate::visitors::BlockChainVisitor;
@@ -51,8 +51,8 @@ impl<'a> Block<'a> {
         BlockHeader::new(read_array::<80>(&mut slice).unwrap())
     }
 
-    pub fn transactions(&self) -> Result<Transactions<'a>> {
-        Transactions::new(self.0.get(80..).ok_or(crate::error::EofError)?)
+    pub fn transactions(&self) -> ParseResult<Transactions<'a>> {
+        Transactions::new(self.0.get(80..).ok_or(ParseError::Eof)?)
     }
 
     pub fn walk<V: BlockChainVisitor>(

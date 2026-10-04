@@ -1,8 +1,7 @@
 use clap::{Parser, ValueEnum};
 use env_logger::Builder;
 use log::{error, info, LevelFilter};
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -12,6 +11,8 @@ use bitiodine::visitors::{
     DumpTxHashes, MerkleVisitor,
 };
 use bitiodine::BlockChain;
+
+mod output;
 
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
@@ -114,6 +115,9 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    if matches!(cli.action, Action::Clusterizer | Action::DumpBalances) {
+        output::validate_output(&cli.blocks_dir, &cli.output)?;
+    }
     info!(
         "Opening Bitcoin blockchain from: {}",
         cli.blocks_dir.display()
@@ -141,10 +145,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 "Writing {count} clustered addresses to {}",
                 cli.output.display()
             );
-            let file = File::create(&cli.output)?;
-            let mut writer = BufWriter::new(file);
-            visitor.write_csv(&mut writer)?;
-            writer.flush()?;
+            output::write_atomic(&cli.blocks_dir, &cli.output, |writer| {
+                visitor.write_csv(writer)
+            })?;
             bitiodine::metrics::log_peak_rss("after clusterizer");
             info!("Done!");
         }
@@ -156,10 +159,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 "Writing {count} address balances to {}",
                 cli.output.display()
             );
-            let file = File::create(&cli.output)?;
-            let mut writer = BufWriter::new(file);
-            visitor.write_csv(&mut writer)?;
-            writer.flush()?;
+            output::write_atomic(&cli.blocks_dir, &cli.output, |writer| {
+                visitor.write_csv(writer)
+            })?;
             bitiodine::metrics::log_peak_rss("after dump-balances");
             info!("Done!");
         }

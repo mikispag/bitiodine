@@ -135,7 +135,7 @@ fn valid_chain_writes_nonempty_csv_and_verifies_merkle_roots() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn csv_flush_errors_fail_without_reporting_success() {
+fn nonregular_csv_destinations_fail_without_reporting_success() {
     let fixture = Fixture::new();
     fixture.valid_chain();
     for action in ["clusterizer", "dump-balances"] {
@@ -174,5 +174,139 @@ fn unknown_or_invalid_chain_tips_fail() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(!stderr.contains("verified successfully"), "{stderr}");
         assert!(!stderr.contains("panicked"), "{stderr}");
+    }
+}
+
+#[test]
+fn file_limit_excludes_later_corrupt_files() {
+    let fixture = Fixture::new();
+    fixture.valid_chain();
+    fs::write(fixture.0.join("blk00001.dat"), [1; 8]).unwrap();
+    let output = fixture.run_with_args(
+        "merkle",
+        &fixture.0.join("unused.csv"),
+        &["--max-blocks", "1"],
+    );
+    assert!(output.status.success(), "{output:?}");
+    let output = fixture.run("merkle", &fixture.0.join("unused.csv"));
+    assert!(!output.status.success(), "{output:?}");
+}
+
+#[test]
+fn failed_traversal_preserves_existing_csv() {
+    let fixture = Fixture::new();
+    fs::write(fixture.0.join("blk00000.dat"), [1; 8]).unwrap();
+    let path = fixture.0.join("results.csv");
+    let previous = b"previous successful results\n";
+    fs::write(&path, previous).unwrap();
+    for action in ["clusterizer", "dump-balances"] {
+        let output = fixture.run(action, &path);
+        assert!(!output.status.success(), "{action}: {output:?}");
+        assert_eq!(fs::read(&path).unwrap(), previous);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn csv_outputs_must_not_overwrite_input_data() {
+    let mut overwritten = Vec::new();
+    for action in ["clusterizer", "dump-balances"] {
+        for alias in ["direct", "symlink", "hardlink", "xor.dat"] {
+            let fixture = Fixture::new();
+            fixture.valid_chain();
+            let input = fixture.0.join(if alias == "xor.dat" {
+                "xor.dat"
+            } else {
+                "blk00000.dat"
+            });
+            if alias == "xor.dat" {
+                fs::write(&input, [0; 8]).unwrap();
+            }
+            let before = fs::read(&input).unwrap();
+            let output_path = match alias {
+                "symlink" => {
+                    let path = fixture.0.join("results.csv");
+                    std::os::unix::fs::symlink(&input, &path).unwrap();
+                    path
+                }
+                "hardlink" => {
+                    let path = fixture.0.join("results.csv");
+                    fs::hard_link(&input, &path).unwrap();
+                    path
+                }
+                _ => input.clone(),
+            };
+            let output = fixture.run(action, &output_path);
+            if output.status.success() || fs::read(&input).unwrap() != before {
+                overwritten.push(format!("{action}/{alias}: exit {}", output.status));
+            }
+        }
+    }
+    assert!(
+        overwritten.is_empty(),
+        "input protection failed: {}",
+        overwritten.join(", ")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn csv_output_protects_unselected_files_and_reserved_names() {
+    for action in ["clusterizer", "dump-balances"] {
+        for alias in [
+            "direct",
+            "symlink",
+            "hardlink",
+            "missing-block",
+            "missing-xor",
+            "dangling",
+        ] {
+            let fixture = Fixture::new();
+            fixture.valid_chain();
+            let input = fixture.0.join("blk00001.dat");
+            let before = b"unselected block data";
+            fs::write(&input, before).unwrap();
+            let output_path = match alias {
+                "symlink" | "hardlink" => {
+                    let path = fixture.0.join("results.csv");
+                    if alias == "symlink" {
+                        std::os::unix::fs::symlink(&input, &path).unwrap();
+                    } else {
+                        fs::hard_link(&input, &path).unwrap();
+                    }
+                    path
+                }
+                "missing-block" => fixture.0.join("blk00002.dat"),
+                "missing-xor" => fixture.0.join("xor.dat"),
+                "dangling" => {
+                    let path = fixture.0.join("results.csv");
+                    std::os::unix::fs::symlink(fixture.0.join("xor.dat"), &path).unwrap();
+                    path
+                }
+                _ => input.clone(),
+            };
+            let output = fixture.run_with_args(action, &output_path, &["--max-blocks", "1"]);
+            assert!(!output.status.success(), "{action}/{alias}: {output:?}");
+            assert_eq!(fs::read(&input).unwrap(), before);
+            assert!(!fixture.0.join("blk00002.dat").exists());
+            assert!(!fixture.0.join("xor.dat").exists());
+            assert!(!String::from_utf8_lossy(&output.stderr).contains("Indexing block file"));
+        }
+    }
+}
+
+#[test]
+fn successful_csv_replaces_previous_results_without_leaving_temporary_files() {
+    let fixture = Fixture::new();
+    fixture.valid_chain();
+    let path = fixture.0.join("results.csv");
+    for action in ["clusterizer", "dump-balances"] {
+        fs::write(&path, b"old results\n").unwrap();
+        let output = fixture.run(action, &path);
+        assert!(output.status.success(), "{action}: {output:?}");
+        let csv = fs::read(&path).unwrap();
+        assert!(!csv.is_empty());
+        assert_ne!(csv, b"old results\n");
+        assert_eq!(fs::read_dir(&fixture.0).unwrap().count(), 2);
     }
 }

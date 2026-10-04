@@ -18,7 +18,7 @@ BitIodine supports legacy and SegWit transaction serialization, including Bitcoi
 
 | Script Type | Standard | Address Prefix | Status |
 | :--- | :--- | :--- | :--- |
-| **Pay-to-Pubkey (P2PK)** | Legacy (Genesis) | `1...` public-key identifier | ✅ Supported |
+| **Pay-to-Pubkey (P2PK)** | Legacy (Genesis) | `1...` public-key identifier | ✅ Supported, including valid legacy hybrid keys |
 | **Pay-to-PubkeyHash (P2PKH)** | Legacy | `1...` (Base58) | ✅ Supported |
 | **Pay-to-ScriptHash (P2SH)** | BIP-16 | `3...` (Base58) | ✅ Supported |
 | **P2SH-wrapped SegWit (P2SH-P2WPKH / P2SH-P2WSH)** | BIP-141 / BIP-143 | `3...` (Base58) | ✅ Supported |
@@ -27,7 +27,7 @@ BitIodine supports legacy and SegWit transaction serialization, including Bitcoi
 | **Taproot / SegWit v1 (P2TR)** | BIP-341 / BIP-350 | `bc1p...` (Bech32m) | ✅ Supported |
 | **Future SegWit Witness Programs (v2–v16)** | BIP-141 / BIP-350 | `bc1...` (Bech32m) | ✅ Supported |
 | **Bare Multisig (`OP_CHECKMULTISIG`)** | Legacy / BIP-11 | M-of-N public keys | ✅ Supported |
-| **Null Data (`OP_RETURN`)** | Legacy / null data | Empty or single pushed payload | ✅ Supported, including PUSHDATA1/2/4 |
+| **Null Data (`OP_RETURN`)** | Legacy / null data | Empty, single, or multiple pushed payloads | ✅ Supported, including PUSHDATA1/2/4 and numeric markers |
 | **Timelock and other nonstandard scripts** | BIP-65 / BIP-112, others | No inferred standard destination | Heuristic classification only |
 
 ### Core Parser Capabilities
@@ -97,7 +97,7 @@ An explicit tip and every ancestor must be present in the selected files. Combin
 | `dump-balances` | Calculates balances from surviving address-associated UTXOs | CSV (`<balance_btc>,<identifier_hash>,<address>`) |
 | `dump-addresses` | Prints recognized output addresses and public-key identifiers; duplicates are retained | Stdout, one per line |
 | `dump-tx-hashes` | Prints block summaries and transaction IDs at heights above 480,000 divisible by 1,000 | Stdout |
-| `dataoutput-finder` | Streams `OP_RETURN` payloads as lossless hexadecimal | Stdout CSV (`<txid>,<vout>,<payload_hex>`), no header |
+| `dataoutput-finder` | Streams `OP_RETURN` payloads or complete multi-push scripts | Stdout CSV (`<txid>,<vout>,<payload>`), no header |
 | `donation-finder` | Streams positive-value donation or unknown-script candidates | Stdout CSV (`<txid>,<vout>,<satoshis>,<script_hex>`), no header |
 | `merkle` | Verifies each selected block's transaction Merkle root against its header | Logs |
 
@@ -105,7 +105,9 @@ P2PK outputs and bare-multisig participants use P2PKH identifiers derived from t
 
 Cluster and balance CSV rows are unsorted. Cluster representatives are canonical address identifiers selected using the address type's ordering; only addresses participating in eligible merges appear in the cluster export. Balance rows have no header, omit zero balances, and format BTC values to eight decimal places. Their `identifier_hash` is the Base58 address's HASH160, or forty zero hex digits for witness addresses; use the full address column as the identifier.
 
-Finder output uses zero-based transaction output indexes and hexadecimal data so arbitrary bytes cannot corrupt CSV rows. The data finder recognizes bare `OP_RETURN` and `OP_RETURN` followed by one push; it does not combine multiple pushes. All logging goes to stderr, so stdout from the extraction actions can be redirected independently.
+CSV exports reject destinations that alias source block files or `xor.dat`, including symlinks and hardlinks. They are written to a temporary file beside the destination and published by rename only after writing and synchronization succeed, preserving previous results on write failure. Source aliases are rejected even when a file limit excludes the source file from traversal.
+
+Finder output uses zero-based transaction output indexes. For bare `OP_RETURN` or a single push, the third field remains the payload in lowercase hexadecimal (empty for bare `OP_RETURN`). For multiple pushes it is `script:<complete_script_hex>`, including `OP_RETURN`; this preserves push boundaries, numeric markers, and opcode encodings. Malformed or non-push tails are not extracted. All logging goes to stderr, so stdout from the extraction actions can be redirected independently.
 
 ### Examples
 
@@ -227,7 +229,8 @@ sequenceDiagram
         Note over BC: Stage returned output items for this transaction
     end
 
-    BC->>BC: Parse witness and locktime, compute txid
+    BC->>V: visit_transaction_witness(input_index, item_index, item, block_item, tx_item)
+    BC->>BC: Parse locktime, compute txid
     BC->>UTXO: Remove retained outputs with the same txid
     loop Each output replaced by a duplicate transaction
         BC->>V: visit_output_removed(output_item)
@@ -282,7 +285,7 @@ flowchart LR
 
 - **`blockchain`**: Discovers `blk*.dat` files, decodes XOR records, indexes parent links and disk offsets, and selects the supplied tip's ancestry or the most-work connected candidate before updating visitor state. It does not consult Core's active-chain database or support live reorg rollback.
 - **`block` & `header`**: Zero-copy block framing and 80-byte header deserialization (version, previous block hash, Merkle root, timestamp, bits, nonce).
-- **`transactions` & `script`**: Transaction and witness deserialization, txid computation, exact standard-script recognition, and heuristic classification of other scripts. Witness bytes are consumed but no wtxid or full Script validation is provided.
+- **`transactions` & `script`**: Transaction and witness deserialization, txid computation, exact standard-script recognition, and heuristic classification of other scripts. Noncanonical CompactSize encodings and superfluous witness serialization are rejected. Witness elements are available through visitor callbacks, and `Transaction::wtxid()` hashes the full serialization on demand. Witness commitment and full Script validation are not provided. Native witness recognition starts at mainnet height 481,824.
 - **`hash` & `hash160`**: Type-safe wrappers for hashes. Block and transaction hash display reverses the internal digest bytes; Hash160 text preserves byte order.
 - **`visitors`**: Implementation of analysis plugins conforming to `BlockChainVisitor`.
 
@@ -291,6 +294,8 @@ flowchart LR
 `BlockChain::read(path, max_files)` is safe and returns `ParseResult<BlockChain>`. Use `with_tip(hash)` to anchor traversal. `walk(&mut visitor)` returns the selected block count (including genesis), selected tip hash, and retained visitor output items. It does not call `done()`; the caller must finalize the visitor and flush any external writers.
 
 Visitor output items belong to the UTXO tracker until spent or replaced. `visit_output_removed` handles historical duplicate-txid replacements; `visit_block_end` returns `ParseResult<()>` and can stop traversal on a sink or validation error. On failure, discard partially updated visitor state before retrying.
+
+`visit_transaction_witness` runs after output callbacks, once per witness element, including empty elements. Empty stacks and legacy transactions emit no witness callbacks. The CompactSize and transaction parsing APIs return `ParseResult`, distinguishing malformed data from truncated input. File traversal errors include the source path and byte offset when available.
 
 Build the API reference and its usage example locally:
 
@@ -304,7 +309,7 @@ Open `target/doc/bitiodine/index.html`. The crate-level example is also availabl
 
 ## Testing
 
-Run the checks used by CI, plus the library documentation example:
+Run the checks used by CI, including the library documentation example:
 
 ```bash
 cargo fmt --all -- --check
@@ -315,6 +320,13 @@ cargo test --locked --doc
 ```
 
 CI runs both test configurations on Rust 1.85 and stable. The regression suite covers chain ordering and work selection, explicit tips, XOR framing, truncated transactions, script recognition, historical balances, and CLI/sink failures.
+
+An opt-in integration test compares sampled blocks, transactions, and Merkle roots against `rust-bitcoin`. It only reads existing files and never starts a node or invokes RPC:
+
+```bash
+BITIODINE_BLOCKS_DIR=/path/to/blocks-snapshot \
+  cargo test --locked --release --test local_data_tests -- --ignored --nocapture
+```
 
 ## Benchmarking
 

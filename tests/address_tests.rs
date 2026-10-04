@@ -165,3 +165,24 @@ fn test_compact_address_ordering_parity() {
         assert_eq!(address.to_string(), compact.to_string());
     }
 }
+
+#[test]
+fn compact_witness_addresses_preserve_all_versions_and_program_boundaries() {
+    use bitcoin_bech32::constants::Network;
+    use bitcoin_bech32::{u5, WitnessProgram};
+
+    for version in 1..=16 {
+        for length in [2, 32, 40] {
+            let program = WitnessProgram::new(
+                u5::try_from_u8(version).unwrap(),
+                vec![version; length],
+                Network::Bitcoin,
+            )
+            .unwrap();
+            let compact = CompactAddress::from_witness_program(&program);
+            let decoded = WitnessProgram::from_address(&compact.to_string()).unwrap();
+            assert_eq!(decoded.version().to_u8(), version);
+            assert_eq!(decoded.program(), program.program());
+        }
+    }
+}

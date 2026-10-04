@@ -6,7 +6,9 @@ use crate::script::HighLevel;
 use crate::transactions::{Transaction, TransactionOutput};
 use crate::visitors::BlockChainVisitor;
 
-/// Writes `txid,vout,payload_hex` CSV rows without retaining OP_RETURN UTXOs.
+/// Writes `txid,vout,payload` CSV rows without retaining OP_RETURN UTXOs.
+/// Payload is hexadecimal for zero or one push. Multiple pushes use
+/// `script:<full_script_hex>` to preserve push boundaries and opcode encodings.
 pub struct DataOutputFinder<'w> {
     writer: Box<dyn Write + 'w>,
     error: Option<io::Error>,
@@ -50,8 +52,16 @@ impl BlockChainVisitor for DataOutputFinder<'_> {
         transaction: &mut Self::TransactionItem,
     ) -> Option<Self::OutputItem> {
         if self.error.is_none() {
-            if let HighLevel::DataOutput(data) = txout.script.to_highlevel() {
-                transaction.1.push((transaction.0, hex::encode(data)));
+            match txout.script.to_highlevel() {
+                HighLevel::DataOutput(data) => {
+                    transaction.1.push((transaction.0, hex::encode(data)));
+                }
+                HighLevel::DataOutputScript(script) => {
+                    transaction
+                        .1
+                        .push((transaction.0, format!("script:{}", hex::encode(script))));
+                }
+                _ => {}
             }
         }
         transaction.0 += 1;

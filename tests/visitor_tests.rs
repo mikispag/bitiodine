@@ -357,3 +357,69 @@ fn transaction_hash_dumper_returns_error_for_missing_transaction_count() {
         .walk(&mut visitor, 800_000, &mut OutputMap::default())
         .is_err());
 }
+
+#[test]
+fn hybrid_p2pk_outputs_contribute_to_balances() {
+    // secp256k1 generator, using the legacy hybrid encoding with even Y.
+    let pk = hex::decode(concat!(
+        "0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+    ))
+    .unwrap();
+    bitcoin::secp256k1::PublicKey::from_slice(&pk).expect("valid hybrid public key");
+    let mut script = vec![65];
+    script.extend(&pk);
+    script.push(0xac);
+
+    let mut visitor = DumpBalances::new();
+    let expected = CompactAddress::from_hash160(&Hash160::from_data(&pk), 0);
+    assert_eq!(
+        visitor.visit_transaction_output(output(&script, 17), &mut false, &mut ()),
+        Some((expected, 17))
+    );
+    assert_eq!(visitor.balances.get(&expected), Some(&17));
+}
+
+#[test]
+fn balances_keep_other_unspent_outputs_when_one_credit_is_spent() {
+    let mut script = vec![0x00, 0x14];
+    script.extend([7; 20]);
+    let mut visitor = DumpBalances::new();
+    let first = visitor
+        .visit_transaction_output(output(&script, 17), &mut false, &mut ())
+        .unwrap();
+    let second = visitor
+        .visit_transaction_output(output(&script, 23), &mut false, &mut ())
+        .unwrap();
+    assert_eq!(first.0, second.0);
+    assert_eq!(visitor.balances.get(&first.0), Some(&40));
+    visitor.visit_output_removed(first);
+    assert_eq!(visitor.balances.get(&second.0), Some(&23));
+    visitor.visit_output_removed(second);
+    assert!(visitor.balances.is_empty());
+}
+
+#[test]
+fn data_finder_includes_multi_push_op_return_outpoints() {
+    let bytes = coinbase(&[
+        (0, b"\x6a\x01a\x01b"),
+        (0, b"\x6a\x5d\x02ab"),
+        (0, b"\x6a\x4c\x01a\x4d\x01\x00b"),
+        (0, b"\x6a\x02ab"),
+        (0, b"\x6a\x01a\x02b"), // Malformed tail: no row.
+    ]);
+    let txid = Hash::from_data(&bytes);
+    let mut rows = Vec::new();
+    {
+        let mut visitor = DataOutputFinder::with_writer(&mut rows);
+        assert!(walk_transaction(&mut visitor, &bytes).is_empty());
+        visitor.done().unwrap();
+    }
+    assert_eq!(
+        String::from_utf8(rows).unwrap(),
+        format!(
+            "{txid},0,script:6a01610162\n{txid},1,script:6a5d026162\n\
+             {txid},2,script:6a4c01614d010062\n{txid},3,6162\n"
+        )
+    );
+}

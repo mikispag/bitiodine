@@ -117,3 +117,53 @@ fn csv_uses_canonical_roots_before_finalization() {
         assert_eq!(row.split_once(',').unwrap().1, representative);
     }
 }
+
+#[test]
+fn coinjoin_filter_prevents_bridging_preexisting_clusters() {
+    use bitiodine::address::CompactAddress;
+    use bitiodine::hash::Hash;
+    use bitiodine::hash160::Hash160;
+    use bitiodine::transactions::Transaction;
+    use bitiodine::visitors::clusterizer::{Clusterizer, TransactionClusterState};
+    use bitiodine::visitors::BlockChainVisitor;
+
+    let [a, b, c, d] =
+        [1, 2, 3, 4].map(|byte| CompactAddress::from_hash160(&Hash160([byte; 20]), 0));
+    let mut visitor = Clusterizer::new();
+    let transaction = Transaction {
+        version: 1,
+        txid: Hash::from_data(b"co-spend"),
+        txins_count: 2,
+        txouts_count: 3,
+        lock_time: 0,
+        slice: &[],
+    };
+    for (inputs, amounts) in [
+        ([a, b], [1, 2, 3]),
+        ([c, d], [1, 2, 3]),
+        ([b, c], [7, 7, 7]),
+    ] {
+        visitor.visit_transaction_end(
+            transaction,
+            &mut (),
+            TransactionClusterState {
+                input_addresses: inputs.into_iter().collect(),
+                output_values: amounts.into_iter().collect(),
+            },
+        );
+    }
+    assert_eq!(visitor.clusters.find(&a), visitor.clusters.find(&b));
+    assert_eq!(visitor.clusters.find(&c), visitor.clusters.find(&d));
+    assert_ne!(visitor.clusters.find(&a), visitor.clusters.find(&d));
+
+    // Three zero-valued outputs must not suppress an otherwise eligible merge.
+    visitor.visit_transaction_end(
+        transaction,
+        &mut (),
+        TransactionClusterState {
+            input_addresses: [b, c].into_iter().collect(),
+            output_values: [0, 0, 0].into_iter().collect(),
+        },
+    );
+    assert_eq!(visitor.clusters.find(&a), visitor.clusters.find(&d));
+}

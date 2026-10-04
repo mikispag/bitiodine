@@ -1,4 +1,5 @@
 use bitiodine::buffer_operations::{read_array, read_slice, read_u16, read_u8, read_var_int};
+use bitiodine::error::ParseError;
 
 #[test]
 fn test_read_u8_u16_u32_u64() {
@@ -37,6 +38,59 @@ fn test_read_var_int() {
     // 8-byte VarInt (0xff prefix)
     let mut slice = &[0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08][..];
     assert_eq!(read_var_int(&mut slice).unwrap(), 0x0807060504030201);
+}
+
+#[test]
+fn compact_size_boundaries_and_every_truncation() {
+    for value in [
+        0,
+        0xfc,
+        0xfd,
+        0xffff,
+        0x10000,
+        0xffffffff,
+        0x100000000,
+        u64::MAX,
+    ] {
+        let encoded = bitcoin::consensus::serialize(&bitcoin::consensus::encode::VarInt(value));
+        for end in 0..encoded.len() {
+            assert!(
+                matches!(read_var_int(&mut &encoded[..end]), Err(ParseError::Eof)),
+                "accepted truncation at {end} for {value}"
+            );
+        }
+        let mut with_sentinel = encoded;
+        with_sentinel.push(0x42);
+        let mut slice = with_sentinel.as_slice();
+        assert_eq!(read_var_int(&mut slice).unwrap(), value);
+        assert_eq!(slice, &[0x42]);
+    }
+}
+
+#[test]
+fn nonminimal_compact_sizes_are_invalid() {
+    for encoded in [
+        &[0xfd, 0, 0][..],
+        &[0xfd, 0xfc, 0],
+        &[0xfe, 0, 0, 0, 0],
+        &[0xfe, 0xff, 0xff, 0, 0],
+        &[0xff, 0, 0, 0, 0, 0, 0, 0, 0],
+        &[0xff, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0],
+    ] {
+        assert!(matches!(
+            read_var_int(&mut &encoded[..]),
+            Err(ParseError::Invalid)
+        ));
+    }
+}
+
+#[test]
+fn oversized_reads_fail_without_panicking() {
+    let mut slice = &[1, 2, 3][..];
+    assert!(read_slice(&mut slice, usize::MAX).is_err());
+    assert!(slice.is_empty());
+    assert_eq!(read_slice(&mut slice, 0).unwrap(), &[]);
+    assert!(read_array::<4>(&mut &[1, 2, 3][..]).is_err());
 }
 
 #[test]

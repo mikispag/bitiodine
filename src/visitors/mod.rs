@@ -25,8 +25,8 @@ pub use merkle::MerkleVisitor;
 ///
 /// 1. [`visit_block_begin`](Self::visit_block_begin).
 /// 2. For each transaction: [`visit_transaction_begin`](Self::visit_transaction_begin),
-///    all input callbacks, all output callbacks, any replaced-output callbacks,
-///    and [`visit_transaction_end`](Self::visit_transaction_end).
+///    all input callbacks, all output callbacks, all witness callbacks,
+///    any replaced-output callbacks, and [`visit_transaction_end`](Self::visit_transaction_end).
 /// 3. [`visit_block_end`](Self::visit_block_end).
 ///
 /// Output items returned by [`visit_transaction_output`](Self::visit_transaction_output)
@@ -88,6 +88,20 @@ pub trait BlockChainVisitor {
         _tx_item: &mut Self::TransactionItem,
     ) -> Option<Self::OutputItem> {
         None
+    }
+
+    /// Receives a witness stack element, including empty elements, after outputs.
+    ///
+    /// Input and item indices are zero-based. Legacy transactions and empty witness
+    /// stacks emit no callbacks. Retained witness data must be copied by the visitor.
+    fn visit_transaction_witness(
+        &mut self,
+        _input_index: u64,
+        _item_index: u64,
+        _item: &[u8],
+        _block_item: &mut Self::BlockItem,
+        _tx_item: &mut Self::TransactionItem,
+    ) {
     }
 
     /// Consumes an unspent item replaced by a transaction with the same ID.

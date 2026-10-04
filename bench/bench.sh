@@ -47,8 +47,11 @@ echo "|---|---|---|" >>"$RESULTS"
 for action in clusterizer dump-balances; do
     echo "Benchmarking $action on $N block file(s)..."
     START_NS="$(date +%s%N)"
-    "$BIN" -b "$BLOCKS_DIR" -a "$action" --max-blocks "$N" -o "$OUT_DIR/$action.csv" \
-        2>"$OUT_DIR/$action.log"
+    if ! "$BIN" -b "$BLOCKS_DIR" -a "$action" --max-blocks "$N" -o "$OUT_DIR/$action.csv" \
+        2>"$OUT_DIR/$action.log"; then
+        cat "$OUT_DIR/$action.log" >&2
+        exit 1
+    fi
     END_NS="$(date +%s%N)"
 
     WALL_S="$(awk -v s="$START_NS" -v e="$END_NS" 'BEGIN {printf "%.1f", (e - s) / 1e9}')"

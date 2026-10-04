@@ -29,3 +29,32 @@ fn test_merkle_hasher_two_txs() {
     let expected = Hash::from_data(&buf);
     assert_eq!(root, expected);
 }
+
+#[test]
+fn streaming_merkle_matches_layer_by_layer_for_odd_and_even_trees() {
+    // Exercise repeated right-edge duplication and carries across several levels.
+    for count in 0u32..=129 {
+        let mut layer: Vec<_> = (0..count)
+            .map(|n| Hash::from_data(&n.to_le_bytes()))
+            .collect();
+        let mut hasher = MerkleHasher::default();
+        for &hash in &layer {
+            hasher.add(hash);
+        }
+        while layer.len() > 1 {
+            if layer.len() % 2 != 0 {
+                layer.push(*layer.last().unwrap());
+            }
+            layer = layer
+                .chunks_exact(2)
+                .map(|pair| {
+                    let mut bytes = [0; 64];
+                    bytes[..32].copy_from_slice(pair[0].as_slice());
+                    bytes[32..].copy_from_slice(pair[1].as_slice());
+                    Hash::from_data(&bytes)
+                })
+                .collect();
+        }
+        assert_eq!(hasher.finish(), layer.first().copied(), "{count} leaves");
+    }
+}

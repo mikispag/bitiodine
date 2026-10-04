@@ -233,3 +233,123 @@ fn trusted_tip_overrides_unvalidated_higher_work_candidates() {
     assert!(chain.walk(&mut visitor).is_err());
     assert!(visitor.nonces.is_empty());
 }
+
+#[test]
+fn nonuniform_xor_handles_record_offsets_and_restarts_at_each_file() {
+    let (_, mut genesis) = record(ZERO_HASH, 0, 0x1d00ffff, 0);
+    // Extend the output script before locktime so the next frame is unaligned.
+    let script_length = genesis.len() - 6;
+    genesis[script_length] = 2;
+    genesis.insert(genesis.len() - 4, 0x51);
+    let body_len = (genesis.len() - 8) as u32;
+    genesis[4..8].copy_from_slice(&body_len.to_le_bytes());
+    let txid = Hash::from_data(&genesis[8 + 80 + 1..]);
+    genesis[8 + 36..8 + 68].copy_from_slice(&txid.0);
+    let g = Hash::from_data(&genesis[8..8 + 80]);
+    let (a, first) = record(g, 1, 0x1d00ffff, 1);
+    let (tip, second) = record(a, 2, 0x1d00ffff, 2);
+    assert_ne!(genesis.len() % 8, 0);
+    let key = [0x00, 0x11, 0x23, 0x45, 0x67, 0x89, 0xab, 0xff];
+    let fixture = Fixture::new(&[genesis, second], Some(key), 5);
+    let mut encrypted = first;
+    for (offset, byte) in encrypted.iter_mut().enumerate() {
+        *byte ^= key[offset % key.len()];
+    }
+    encrypted.extend([0; 13]);
+    std::fs::write(fixture.0.join("blk00001.dat"), encrypted).unwrap();
+    let (count, selected_tip, visitor) = walk(&fixture).unwrap();
+    assert_eq!((count, selected_tip), (3, tip));
+    assert_eq!(visitor.nonces, [0, 1, 2]);
+}
+
+#[test]
+fn malformed_frames_fail_before_visiting_any_block() {
+    let (_, valid) = record(ZERO_HASH, 0, 0x1d00ffff, 0);
+    let mut cases = Vec::new();
+    for size in [1, 7, 8, valid.len() - 1] {
+        cases.push(valid[..size].to_vec());
+    }
+    for size in [0u32, 80, 4_000_001, u32::MAX] {
+        let mut invalid = valid.clone();
+        invalid[4..8].copy_from_slice(&size.to_le_bytes());
+        cases.push(invalid);
+    }
+    let mut wrong_magic = valid.clone();
+    wrong_magic[0] ^= 1;
+    cases.push(wrong_magic);
+    let mut nonzero_padding = valid;
+    nonzero_padding.extend([0; 16]);
+    nonzero_padding.push(1);
+    cases.push(nonzero_padding);
+    for bytes in cases {
+        let fixture = Fixture::new(&[bytes], None, 0);
+        let chain = BlockChain::read(&fixture.0, 0).unwrap();
+        let mut visitor = Capture::new();
+        assert!(chain.walk(&mut visitor).is_err());
+        assert!(visitor.nonces.is_empty());
+    }
+}
+
+#[test]
+fn file_size_changes_after_discovery_fail_before_visiting() {
+    let (_, bytes) = record(ZERO_HASH, 0, 0x1d00ffff, 0);
+    for new_size in [bytes.len() - 1, bytes.len() + 1] {
+        let fixture = Fixture::new(std::slice::from_ref(&bytes), None, 0);
+        let chain = BlockChain::read(&fixture.0, 0).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(fixture.0.join("blk00000.dat"))
+            .unwrap()
+            .set_len(new_size as u64)
+            .unwrap();
+        let mut visitor = Capture::new();
+        let error = chain.walk(&mut visitor).unwrap_err();
+        assert!(error.to_string().contains("changed during analysis"));
+        assert!(visitor.nonces.is_empty());
+    }
+}
+
+#[test]
+fn requested_tip_with_missing_ancestors_does_not_fall_back_to_connected_chain() {
+    let (_, genesis) = record(ZERO_HASH, 0, 0x1d00ffff, 0);
+    let (tip, disconnected) = record(Hash([0x77; 32]), 1, 0x1d00ffff, 0);
+    let fixture = Fixture::new(&[genesis, disconnected], None, 0);
+    let chain = BlockChain::read(&fixture.0, 0).unwrap().with_tip(tip);
+    let mut visitor = Capture::new();
+    let error = chain.walk(&mut visitor).unwrap_err();
+    assert!(error.to_string().contains("missing ancestors"));
+    assert!(visitor.nonces.is_empty());
+}
+
+#[test]
+fn index_and_traversal_errors_identify_the_file_and_record_offset() {
+    let (g, genesis) = record(ZERO_HASH, 0, 0x1d00ffff, 0);
+    let (_, mut child) = record(g, 1, 0x1d00ffff, 0);
+    child[0] ^= 1;
+    let fixture = Fixture::new(&[genesis.clone(), child], None, 0);
+    let error = BlockChain::read(&fixture.0, 0)
+        .unwrap()
+        .walk(&mut Capture::new())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("blk00000.dat"), "{error}");
+    assert!(
+        error.contains(&format!("byte offset {}", genesis.len())),
+        "{error}"
+    );
+
+    let (_, mut child) = record(g, 1, 0x1d00ffff, 0);
+    child[8 + 80] = 2; // Header indexes successfully, but the second transaction is missing.
+    let fixture = Fixture::new(&[genesis.clone(), child], None, 0);
+    let error = BlockChain::read(&fixture.0, 0)
+        .unwrap()
+        .walk(&mut Capture::new())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("blk00000.dat"), "{error}");
+    assert!(
+        error.contains(&format!("byte offset {}", genesis.len() + 8)),
+        "{error}"
+    );
+    assert!(error.contains("unexpected end of input"), "{error}");
+}

@@ -3,7 +3,7 @@ use std::collections::hash_map::Entry as HashEntry;
 
 use crate::blockchain::OutputMap;
 use crate::buffer_operations::{read_array, read_slice, read_u32, read_u64, read_u8, read_var_int};
-use crate::error::{ParseError, ParseResult, Result};
+use crate::error::{ParseError, ParseResult};
 use crate::hash::Hash;
 use crate::script::Script;
 use crate::visitors::BlockChainVisitor;
@@ -43,7 +43,7 @@ pub struct TransactionOutput<'a> {
 }
 
 impl<'a> Transactions<'a> {
-    pub fn new(mut slice: &'a [u8]) -> Result<Transactions<'a>> {
+    pub fn new(mut slice: &'a [u8]) -> ParseResult<Transactions<'a>> {
         let count = read_var_int(&mut slice)?;
         Ok(Transactions { count, slice })
     }
@@ -77,6 +77,12 @@ impl<'a> Transactions<'a> {
 }
 
 impl<'a> Transaction<'a> {
+    /// Hashes the full serialization, including witnesses when present.
+    /// For legacy transactions this is the transaction ID.
+    pub fn wtxid(&self) -> Hash {
+        Hash::from_data(self.slice)
+    }
+
     pub fn read_and_walk<V: BlockChainVisitor>(
         slice: &mut &'a [u8],
         visitor: &mut V,
@@ -153,12 +159,25 @@ impl<'a> Transaction<'a> {
 
         // Read the witnesses
         if marker == 0x00 {
-            for _ in 0..txins_count {
+            let mut has_witness = false;
+            for input_index in 0..txins_count {
                 let item_count = read_var_int(slice)?;
-                for _ in 0..item_count {
-                    let witness_len = read_var_int(slice)? as usize;
-                    read_slice(slice, witness_len)?;
+                has_witness |= item_count != 0;
+                for item_index in 0..item_count {
+                    let witness_len =
+                        usize::try_from(read_var_int(slice)?).map_err(|_| ParseError::Invalid)?;
+                    let item = read_slice(slice, witness_len)?;
+                    visitor.visit_transaction_witness(
+                        input_index,
+                        item_index,
+                        item,
+                        block_item,
+                        &mut transaction_item,
+                    );
                 }
+            }
+            if !has_witness {
+                return Err(ParseError::Invalid);
             }
         }
 
@@ -194,7 +213,11 @@ impl<'a> Transaction<'a> {
 }
 
 impl<'a> TransactionInput<'a> {
-    pub fn read(slice: &mut &'a [u8], timestamp: u32, height: u64) -> Result<TransactionInput<'a>> {
+    pub fn read(
+        slice: &mut &'a [u8],
+        timestamp: u32,
+        height: u64,
+    ) -> ParseResult<TransactionInput<'a>> {
         // Save the initial position
         let mut init_slice = *slice;
 
@@ -206,7 +229,7 @@ impl<'a> TransactionInput<'a> {
         let prev_index = read_u32(slice)?;
 
         // Read the script
-        let nbytes = read_var_int(slice)? as usize;
+        let nbytes = usize::try_from(read_var_int(slice)?).map_err(|_| ParseError::Invalid)?;
         let script = read_slice(slice, nbytes)?;
 
         // Read the sequence_no
@@ -228,7 +251,7 @@ impl<'a> TransactionOutput<'a> {
         slice: &mut &'a [u8],
         timestamp: u32,
         height: u64,
-    ) -> Result<TransactionOutput<'a>> {
+    ) -> ParseResult<TransactionOutput<'a>> {
         // Save the initial position
         let mut init_slice = *slice;
 
@@ -236,7 +259,7 @@ impl<'a> TransactionOutput<'a> {
         let value = read_u64(slice)?;
 
         // Read the script
-        let nbytes = read_var_int(slice)? as usize;
+        let nbytes = usize::try_from(read_var_int(slice)?).map_err(|_| ParseError::Invalid)?;
         let script = read_slice(slice, nbytes)?;
 
         // Return the transaction output
