@@ -24,11 +24,18 @@ impl BlockChainVisitor for MerkleVisitor {
     fn visit_block_end<'a>(
         &mut self,
         block: Block<'a>,
-        _height: u64,
+        height: u64,
         hasher: MerkleHasher,
     ) -> ParseResult<()> {
-        if hasher.finish().as_ref() != Some(block.header().merkle_root()) {
-            return Err(ParseError::Invalid);
+        let header = block.header();
+        let computed = hasher.finish();
+        if computed.as_ref() != Some(header.merkle_root()) {
+            let computed = computed.map_or_else(|| "nothing".to_owned(), |root| root.to_string());
+            return Err(ParseError::Chain(format!(
+                "Merkle root mismatch in block {} at height {height}: header has {}, transactions hash to {computed}",
+                header.cur_hash(),
+                header.merkle_root(),
+            )));
         }
         Ok(())
     }

@@ -11,7 +11,7 @@ use bitiodine::transactions::{Transaction, TransactionInput, TransactionOutput};
 use bitiodine::visitors::clusterizer::SpendRules;
 use bitiodine::visitors::{
     BlockChainVisitor, Clusterizer, DataOutputFinder, DonationFinder, DumpAddresses, DumpBalances,
-    DumpTxHashes,
+    DumpTxHashes, MerkleVisitor,
 };
 
 fn pubkey() -> Vec<u8> {
@@ -438,4 +438,26 @@ fn data_finder_includes_multi_push_op_return_outpoints() {
              {txid},2,script:6a4c01614d010062\n{txid},3,6162\n"
         )
     );
+}
+
+#[test]
+fn merkle_mismatch_reports_block_height_and_roots() {
+    let tx = coinbase(&[(7, &[])]);
+    let txid = Hash::from_data(&tx);
+    let mut block = vec![0; 80];
+    block[0] = 1;
+    block.push(1);
+    block.extend(&tx);
+    let block_hash = Block(&block).header().cur_hash();
+
+    let error = Block(&block)
+        .walk(&mut MerkleVisitor::new(), 42, &mut OutputMap::default())
+        .unwrap_err();
+    let ParseError::Chain(message) = error else {
+        panic!("expected a chain error, got {error:?}");
+    };
+    assert!(message.contains(&block_hash.to_string()), "{message}");
+    assert!(message.contains("height 42"), "{message}");
+    assert!(message.contains(&Hash::default().to_string()), "{message}");
+    assert!(message.contains(&txid.to_string()), "{message}");
 }
