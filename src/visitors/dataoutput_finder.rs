@@ -36,7 +36,7 @@ impl BlockChainVisitor for DataOutputFinder<'_> {
     type DoneItem = ();
 
     fn new() -> Self {
-        Self::with_writer(io::stdout())
+        Self::with_writer(super::buffered_stdout())
     }
 
     fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) {}

@@ -1,3 +1,5 @@
+use std::io::{self, BufWriter, StdoutLock};
+
 use crate::block::Block;
 use crate::error::{ParseResult, Result};
 use crate::transactions::{Transaction, TransactionInput, TransactionOutput};
@@ -19,6 +21,13 @@ pub use dump_balances::DumpBalances;
 pub use dump_tx_hashes::DumpTxHashes;
 pub use merkle::MerkleVisitor;
 pub use resumable_clusterizer::ResumableClusterizer;
+
+/// Block-buffered stdout for the streaming visitors' default writer. Rust's
+/// stdout is line-buffered even when redirected, which costs one write
+/// syscall per output line; visitors flush in `done`.
+fn buffered_stdout() -> BufWriter<StdoutLock<'static>> {
+    BufWriter::with_capacity(64 * 1024, io::stdout().lock())
+}
 
 /// Receives blocks and transactions in the chain order selected by
 /// [`BlockChain::walk`](crate::BlockChain::walk).

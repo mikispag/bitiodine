@@ -32,7 +32,7 @@ impl BlockChainVisitor for DumpTxHashes<'_> {
     type DoneItem = ();
 
     fn new() -> Self {
-        Self::with_writer(io::stdout())
+        Self::with_writer(super::buffered_stdout())
     }
 
     fn visit_block_begin<'a>(&mut self, block: Block<'a>, height: u64) -> Self::BlockItem {
