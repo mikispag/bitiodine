@@ -45,3 +45,19 @@ jobs:
 
       - name: Run documentation tests
         run: cargo test --locked --doc
+
+  windows:
+    name: Build & Test (windows-msvc)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests with default features
+        run: cargo test --locked --all-targets --all-features --verbose

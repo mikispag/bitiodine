@@ -67,7 +67,7 @@ When the calculated budget is below **32 GiB**, the CLI warns that performance m
 
 ## Building
 
-Requires Rust 1.85 or later. `Cargo.lock` is tracked, and CI tests both Rust 1.85 and current stable.
+Requires Rust 1.85 or later. `Cargo.lock` is tracked, and CI tests Rust 1.85 and current stable on Linux, plus current stable on Windows (MSVC).
 
 ```bash
 cargo build --locked --release
@@ -75,7 +75,7 @@ cargo build --locked --release
 
 The optimized executable will be located at `target/release/bitiodine`.
 
-The CLI enables jemalloc by default. To build with the system allocator, add `--no-default-features`.
+The CLI enables jemalloc by default on targets that support it. MSVC targets (Windows with the default toolchain) always use the system allocator. To build with the system allocator elsewhere, add `--no-default-features`.
 
 ---
 
