@@ -88,7 +88,7 @@ The CLI enables jemalloc by default on targets that support it. MSVC targets (Wi
 | Option | Meaning | Default |
 | :--- | :--- | :--- |
 | `-b, --blocks-dir <BLOCKS_DIR>` | Source blocks directory | Platform-specific path above |
-| `-o, --output <OUTPUT>` | CSV destination for `clusterizer` and `dump-balances` | `clusters.csv` |
+| `-o, --output <OUTPUT>` | CSV destination for `clusterizer` and `dump-balances` | `clusters.csv` (`clusterizer`), `balances.csv` (`dump-balances`) |
 | `-a, --action <ACTION>` | Visitor to run; choices listed below | `clusterizer` |
 | `--max-blocks <MAX_BLOCKS>` | Maximum number of **block files**, not blocks or a height | `0` (all files) |
 | `--chain-tip <CHAIN_TIP>` | End traversal at this independently accepted block hash | Most-work connected candidate |

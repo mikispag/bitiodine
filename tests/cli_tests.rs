@@ -217,6 +217,34 @@ fn failed_traversal_preserves_existing_csv() {
 }
 
 #[test]
+fn csv_actions_default_to_separate_output_files() {
+    let fixture = Fixture::new();
+    fixture.valid_chain();
+    // Checkpoints must live outside the blocks directory, so run from its parent.
+    let blocks = fixture.0.join("blocks");
+    fs::create_dir(&blocks).unwrap();
+    fs::rename(fixture.0.join("blk00000.dat"), blocks.join("blk00000.dat")).unwrap();
+    for action in ["clusterizer", "dump-balances"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_bitiodine"))
+            .current_dir(&fixture.0)
+            .arg("--blocks-dir")
+            .arg(&blocks)
+            .args(["--action", action])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{action}: {output:?}");
+    }
+    let clusters = fs::read_to_string(fixture.0.join("clusters.csv")).unwrap();
+    let balances = fs::read_to_string(fixture.0.join("balances.csv")).unwrap();
+    assert!(!clusters.is_empty());
+    assert!(!balances.is_empty());
+    assert_ne!(
+        clusters, balances,
+        "dump-balances overwrote the cluster CSV"
+    );
+}
+
+#[test]
 fn traversal_failures_after_preparing_the_csv_remove_its_temporary_file() {
     let fixture = Fixture::new();
     fixture.valid_chain();

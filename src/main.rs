@@ -50,9 +50,10 @@ struct Cli {
     #[arg(short = 'b', long = "blocks-dir", default_value_os_t = default_blocks_dir())]
     blocks_dir: PathBuf,
 
-    /// Path to the output file (used by clusterizer and dump-balances)
-    #[arg(short = 'o', long = "output", default_value = "clusters.csv")]
-    output: PathBuf,
+    /// CSV output path for clusterizer and dump-balances
+    /// [default: clusters.csv for clusterizer, balances.csv for dump-balances]
+    #[arg(short = 'o', long = "output")]
+    output: Option<PathBuf>,
 
     /// Persistent cluster state directory (default: <output>.state); resume and recover reorgs automatically
     #[arg(long)]
@@ -124,8 +125,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     if cli.checkpoint_dir.is_some() && cli.action != Action::Clusterizer {
         return Err("--checkpoint-dir is only supported by --action clusterizer".into());
     }
+    // Separate defaults keep dump-balances from replacing a clustering result.
+    let csv_path = cli.output.unwrap_or_else(|| match cli.action {
+        Action::DumpBalances => "balances.csv".into(),
+        _ => "clusters.csv".into(),
+    });
     if matches!(cli.action, Action::Clusterizer | Action::DumpBalances) {
-        output::validate_output(&cli.blocks_dir, &cli.output)?;
+        output::validate_output(&cli.blocks_dir, &csv_path)?;
     }
     let budget = if cli.action == Action::Clusterizer {
         let budget = memory::MemoryBudget::detect()?;
@@ -167,35 +173,32 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.action {
         Action::Clusterizer => {
             let state_dir = cli.checkpoint_dir.unwrap_or_else(|| {
-                let mut path = cli.output.as_os_str().to_os_string();
+                let mut path = csv_path.as_os_str().to_os_string();
                 path.push(".state");
                 PathBuf::from(path)
             });
-            output::validate_state_dir(&cli.blocks_dir, &cli.output, &state_dir)?;
+            output::validate_state_dir(&cli.blocks_dir, &csv_path, &state_dir)?;
             // Create the temporary CSV now so an unwritable destination fails
             // before the walk rather than after it.
-            let prepared = output::prepare(&cli.blocks_dir, &cli.output)?;
+            let prepared = output::prepare(&cli.blocks_dir, &csv_path)?;
             let mut store =
                 ClusterStore::open_with_memory_limit(&state_dir, budget.unwrap().sqlite)?;
             info!("Using resumable cluster state in {}", state_dir.display());
             let mut visitor = ResumableClusterizer::with_store(&mut store);
             chain.walk_clusterizer_resumable(&mut visitor)?;
             visitor.done()?;
-            info!("Writing clustered addresses to {}", cli.output.display());
-            output::validate_state_dir(&cli.blocks_dir, &cli.output, &state_dir)?;
+            info!("Writing clustered addresses to {}", csv_path.display());
+            output::validate_state_dir(&cli.blocks_dir, &csv_path, &state_dir)?;
             prepared.publish(|writer| store.write_csv(writer).map_err(std::io::Error::other))?;
             bitiodine::metrics::log_peak_rss("after clusterizer");
             info!("Done!");
         }
         Action::DumpBalances => {
-            let prepared = output::prepare(&cli.blocks_dir, &cli.output)?;
+            let prepared = output::prepare(&cli.blocks_dir, &csv_path)?;
             let mut visitor = DumpBalances::new();
             chain.walk(&mut visitor)?;
             let (count, _) = visitor.done()?;
-            info!(
-                "Writing {count} address balances to {}",
-                cli.output.display()
-            );
+            info!("Writing {count} address balances to {}", csv_path.display());
             prepared.publish(|writer| visitor.write_csv(writer))?;
             bitiodine::metrics::log_peak_rss("after dump-balances");
             info!("Done!");
