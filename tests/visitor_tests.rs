@@ -21,7 +21,7 @@ fn pubkey() -> Vec<u8> {
 fn output(script: &[u8], value: u64) -> TransactionOutput<'_> {
     TransactionOutput {
         value,
-        script: Script::new(script, 1_700_000_000, 800_000),
+        script: Script::new(script, 800_000),
         slice: &[],
     }
 }
@@ -49,15 +49,7 @@ fn walk_transaction<V: BlockChainVisitor<BlockItem = ()>>(
 ) -> OutputMap<V::OutputItem> {
     let mut outputs = OutputMap::default();
     let mut slice = bytes;
-    Transaction::read_and_walk(
-        &mut slice,
-        visitor,
-        1_700_000_000,
-        800_000,
-        &mut (),
-        &mut outputs,
-    )
-    .unwrap();
+    Transaction::read_and_walk(&mut slice, visitor, 800_000, &mut (), &mut outputs).unwrap();
     assert!(slice.is_empty());
     outputs
 }
@@ -87,7 +79,7 @@ fn p2pk_inputs_participate_in_clustering() {
     let input = TransactionInput {
         prev_hash: &prev_hash,
         prev_index: 0,
-        script: Script::new(&[], 1_700_000_000, 800_000),
+        script: Script::new(&[], 800_000),
         sequence_no: u32::MAX,
         slice: &[],
     };
@@ -272,7 +264,6 @@ fn duplicate_coinbase_balances_match_surviving_outputs_and_can_be_spent() {
         Transaction::read_and_walk(
             &mut bytes.as_slice(),
             &mut visitor,
-            1_288_000_000,
             height,
             &mut false,
             &mut outputs,
@@ -302,7 +293,6 @@ fn duplicate_coinbase_balances_match_surviving_outputs_and_can_be_spent() {
     Transaction::read_and_walk(
         &mut spend.as_slice(),
         &mut visitor,
-        1_288_000_000,
         92_000,
         &mut false,
         &mut outputs,

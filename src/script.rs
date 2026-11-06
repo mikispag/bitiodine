@@ -36,30 +36,25 @@ pub enum ChallengeType<'a> {
 pub struct Script<'a> {
     slice: &'a [u8],
     height: u64,
-    timestamp: u32,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 struct ScriptIter<'a> {
     slice: &'a [u8],
     height: u64,
-    timestamp: u32,
 }
 
 impl<'a> Script<'a> {
-    pub fn new(slice: &'a [u8], timestamp: u32, height: u64) -> Script<'a> {
-        Script {
-            slice,
-            height,
-            timestamp,
-        }
+    /// Wraps a script from a block at `height`, which selects opcode names
+    /// (for example CHECKSEQUENCEVERIFY) but not output classification.
+    pub fn new(slice: &'a [u8], height: u64) -> Script<'a> {
+        Script { slice, height }
     }
 
     fn iter(&self) -> ScriptIter<'a> {
         ScriptIter {
             slice: self.slice,
             height: self.height,
-            timestamp: self.timestamp,
         }
     }
 
@@ -87,16 +82,18 @@ impl<'a> Script<'a> {
         // belongs to the heuristic fallback and can change spending conditions.
         let script_slice = self.slice;
 
+        // Outputs are classified by template alone, as Bitcoin Core does: soft
+        // forks constrain how an output is spent, not when it could be created.
+        // Visitors that care about spend-time rules (the clusterizer) apply them.
+
         // Check for SegWit v0-v16 Witness Programs (BIP-141 / BIP-341 / BIP-350)
-        if self.height >= 481_824 {
-            if let Some(w) = parse_witness_program(script_slice) {
-                return match (script_slice[0], script_slice[1]) {
-                    (0x00, 20) => HighLevel::PayToWitnessPubkeyHash(w),
-                    (0x00, 32) => HighLevel::PayToWitnessScriptHash(w),
-                    (0x51, 32) => HighLevel::PayToWitnessTaproot(w),
-                    _ => HighLevel::PayToWitnessGeneral(w),
-                };
-            }
+        if let Some(w) = parse_witness_program(script_slice) {
+            return match (script_slice[0], script_slice[1]) {
+                (0x00, 20) => HighLevel::PayToWitnessPubkeyHash(w),
+                (0x00, 32) => HighLevel::PayToWitnessScriptHash(w),
+                (0x51, 32) => HighLevel::PayToWitnessTaproot(w),
+                _ => HighLevel::PayToWitnessGeneral(w),
+            };
         }
 
         match script_slice.len() {
@@ -114,10 +111,7 @@ impl<'a> Script<'a> {
                 }
                 if script_slice[..2] == [0xa9, 0x14] && script_slice[22] == 0x87 {
                     let hash_bytes: &'a [u8; 20] = script_slice[2..22].try_into().unwrap();
-                    if self.timestamp >= 1333238400 {
-                        return HighLevel::PayToScriptHash(hash_bytes);
-                    }
-                    return HighLevel::Challenge(ChallengeType::Hash160(hash_bytes));
+                    return HighLevel::PayToScriptHash(hash_bytes);
                 }
             }
             25 => {

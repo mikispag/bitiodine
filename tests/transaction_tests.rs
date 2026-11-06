@@ -33,7 +33,6 @@ fn every_truncated_transaction_returns_an_error() {
                     &mut slice,
                     &mut DumpTxHashes::new(),
                     0,
-                    0,
                     &mut Default::default(),
                     &mut Default::default()
                 )
@@ -54,7 +53,6 @@ fn legacy_and_witness_txids_use_stripped_serialization() {
             &mut slice,
             &mut DumpTxHashes::new(),
             0,
-            0,
             &mut Default::default(),
             &mut Default::default(),
         )
@@ -74,7 +72,6 @@ fn undeclared_transaction_bytes_return_an_error() {
     assert!(txs
         .walk(
             &mut DumpTxHashes::new(),
-            0,
             0,
             &mut Default::default(),
             &mut Default::default()
@@ -102,7 +99,6 @@ fn multiple_inputs_outputs_and_witnesses_match_rust_bitcoin() {
         let actual = Transaction::read_and_walk(
             &mut slice,
             &mut DumpTxHashes::new(),
-            0,
             0,
             &mut Default::default(),
             &mut Default::default(),
@@ -132,7 +128,6 @@ fn unsupported_witness_flags_are_rejected() {
             &mut bytes.as_slice(),
             &mut DumpTxHashes::new(),
             0,
-            0,
             &mut Default::default(),
             &mut Default::default(),
         )
@@ -160,7 +155,6 @@ fn noncanonical_transaction_counts_and_lengths_are_rejected() {
                 Transaction::read_and_walk(
                     &mut bytes.as_slice(),
                     &mut DumpTxHashes::new(),
-                    0,
                     0,
                     &mut Default::default(),
                     &mut Default::default(),
@@ -193,7 +187,6 @@ fn superfluous_witness_serialization_is_rejected() {
             &mut bytes.as_slice(),
             &mut DumpTxHashes::new(),
             0,
-            0,
             &mut Default::default(),
             &mut Default::default(),
         ),
@@ -210,7 +203,6 @@ fn a_single_empty_witness_item_is_accepted() {
     let actual = Transaction::read_and_walk(
         &mut bytes.as_slice(),
         &mut DumpTxHashes::new(),
-        0,
         0,
         &mut Default::default(),
         &mut Default::default(),
@@ -270,7 +262,6 @@ fn multibyte_counts_lengths_and_witness_callbacks_match_rust_bitcoin() {
         &mut bytes.as_slice(),
         &mut visitor,
         0,
-        0,
         &mut (),
         &mut Default::default(),
     )
@@ -300,7 +291,6 @@ fn oversized_script_and_witness_lengths_do_not_wrap() {
         let result = Transaction::read_and_walk(
             &mut bytes.as_slice(),
             &mut DumpTxHashes::new(),
-            0,
             0,
             &mut Default::default(),
             &mut Default::default(),

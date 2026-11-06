@@ -51,21 +51,13 @@ impl<'a> Transactions<'a> {
     pub fn walk<V: BlockChainVisitor>(
         self,
         visitor: &mut V,
-        timestamp: u32,
         height: u64,
         block_item: &mut V::BlockItem,
         output_items: &mut OutputMap<V::OutputItem>,
     ) -> ParseResult<()> {
         let mut slice = self.slice;
         for _ in 0..self.count {
-            Transaction::read_and_walk(
-                &mut slice,
-                visitor,
-                timestamp,
-                height,
-                block_item,
-                output_items,
-            )?;
+            Transaction::read_and_walk(&mut slice, visitor, height, block_item, output_items)?;
         }
 
         if !slice.is_empty() {
@@ -86,7 +78,6 @@ impl<'a> Transaction<'a> {
     pub fn read_and_walk<V: BlockChainVisitor>(
         slice: &mut &'a [u8],
         visitor: &mut V,
-        timestamp: u32,
         height: u64,
         block_item: &mut V::BlockItem,
         output_items: &mut OutputMap<V::OutputItem>,
@@ -122,7 +113,7 @@ impl<'a> Transaction<'a> {
 
         // Read the inputs
         for _ in 0..txins_count {
-            let i = TransactionInput::read(slice, timestamp, height)?;
+            let i = TransactionInput::read(slice, height)?;
             let mut output_item = None;
             if let HashEntry::Occupied(mut occupied) = output_items.entry(*i.prev_hash) {
                 let items = occupied.get_mut();
@@ -141,7 +132,7 @@ impl<'a> Transaction<'a> {
 
         let mut cur_output_items = OutputItemList::new();
         for n in 0..txouts_count {
-            let o = TransactionOutput::read(slice, timestamp, height)?;
+            let o = TransactionOutput::read(slice, height)?;
             let output_item =
                 visitor.visit_transaction_output(o, block_item, &mut transaction_item);
 
@@ -213,11 +204,7 @@ impl<'a> Transaction<'a> {
 }
 
 impl<'a> TransactionInput<'a> {
-    pub fn read(
-        slice: &mut &'a [u8],
-        timestamp: u32,
-        height: u64,
-    ) -> ParseResult<TransactionInput<'a>> {
+    pub fn read(slice: &mut &'a [u8], height: u64) -> ParseResult<TransactionInput<'a>> {
         // Save the initial position
         let mut init_slice = *slice;
 
@@ -239,7 +226,7 @@ impl<'a> TransactionInput<'a> {
         Ok(TransactionInput {
             prev_hash,
             prev_index,
-            script: Script::new(script, timestamp, height),
+            script: Script::new(script, height),
             sequence_no,
             slice: read_slice(&mut init_slice, init_slice_len - slice.len())?,
         })
@@ -247,11 +234,7 @@ impl<'a> TransactionInput<'a> {
 }
 
 impl<'a> TransactionOutput<'a> {
-    pub fn read(
-        slice: &mut &'a [u8],
-        timestamp: u32,
-        height: u64,
-    ) -> ParseResult<TransactionOutput<'a>> {
+    pub fn read(slice: &mut &'a [u8], height: u64) -> ParseResult<TransactionOutput<'a>> {
         // Save the initial position
         let mut init_slice = *slice;
 
@@ -266,7 +249,7 @@ impl<'a> TransactionOutput<'a> {
         let init_slice_len = init_slice.len();
         Ok(TransactionOutput {
             value,
-            script: Script::new(script, timestamp, height),
+            script: Script::new(script, height),
             slice: read_slice(&mut init_slice, init_slice_len - slice.len())?,
         })
     }

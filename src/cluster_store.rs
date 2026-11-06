@@ -17,7 +17,8 @@ const FORMAT_VERSION: i64 = 1;
 /// Bump whenever clustering or output classification changes, so state built
 /// under different rules is rejected instead of resumed.
 /// 2: inputs count only if their spend required a signature (`SpendRules`).
-const HEURISTIC_VERSION: i64 = 2;
+/// 3: P2SH and witness outputs are classified by script, whatever the block.
+const HEURISTIC_VERSION: i64 = 3;
 pub const UNDO_BLOCKS: u64 = 144;
 
 impl From<rusqlite::Error> for ParseError {

@@ -1,6 +1,7 @@
 use bitiodine::bytecode::Bytecode;
 use bitiodine::script::{
-    bytes_to_bool, bytes_to_i32, bytes_to_u32, is_valid_pubkey, ChallengeType, HighLevel, Script,
+    bytes_to_bool, bytes_to_i32, bytes_to_u32, is_valid_pubkey, witness_program_version, HighLevel,
+    Script,
 };
 
 #[test]
@@ -11,7 +12,7 @@ fn test_script_p2pkh_recognition() {
     script_bytes.extend_from_slice(&[0xaa; 20]);
     script_bytes.extend_from_slice(&[0x88, 0xac]);
 
-    let script = Script::new(&script_bytes, 1600000000, 500000);
+    let script = Script::new(&script_bytes, 500000);
     match script.to_highlevel() {
         HighLevel::PayToPubkeyHash(pkh) => {
             assert_eq!(pkh, &[0xaa; 20]);
@@ -26,7 +27,7 @@ fn test_script_taproot_recognition() {
     let mut script_bytes = vec![0x51, 0x20];
     script_bytes.extend_from_slice(&[0xbb; 32]);
 
-    let script = Script::new(&script_bytes, 1650000000, 750000);
+    let script = Script::new(&script_bytes, 750000);
     match script.to_highlevel() {
         HighLevel::PayToWitnessTaproot(w) => {
             let address = w.to_address();
@@ -44,7 +45,7 @@ fn test_script_taproot_recognition() {
 fn test_script_general_witness_recognition() {
     // General SegWit (e.g. version 2 with 4 bytes payload: OP_2 04 <4 bytes>)
     let script_bytes = [0x52, 0x04, 0x01, 0x02, 0x03, 0x04];
-    let script = Script::new(&script_bytes, 1650000000, 750000);
+    let script = Script::new(&script_bytes, 750000);
     match script.to_highlevel() {
         HighLevel::PayToWitnessGeneral(w) => {
             assert_eq!(w.version().to_u8(), 2);
@@ -72,7 +73,7 @@ fn test_cltv_and_csv_opcodes() {
 fn test_script_op_return_recognition() {
     // OP_RETURN <len> <data>
     let script_bytes = [0x6a, 0x04, 0xde, 0xad, 0xbe, 0xef];
-    let script = Script::new(&script_bytes, 1600000000, 500000);
+    let script = Script::new(&script_bytes, 500000);
     match script.to_highlevel() {
         HighLevel::DataOutput(data) => {
             assert_eq!(data, &[0xde, 0xad, 0xbe, 0xef]);
@@ -109,18 +110,56 @@ fn test_cscriptnum_little_endian_decoding() {
 }
 
 #[test]
-fn test_script_p2sh_recognition_at_activation() {
-    let mut bytes = vec![0xa9, 0x14];
-    bytes.extend_from_slice(&[0xaa; 20]);
-    bytes.push(0x87);
+fn p2sh_and_witness_outputs_are_classified_regardless_of_block() {
+    // Outputs created before BIP16 or SegWit activation are still P2SH or
+    // witness destinations; soft forks constrain spending, not creation.
+    let mut p2sh = vec![0xa9, 0x14];
+    p2sh.extend_from_slice(&[0xaa; 20]);
+    p2sh.push(0x87);
+    let mut p2wpkh = vec![0x00, 0x14];
+    p2wpkh.extend_from_slice(&[0xbb; 20]);
+    for height in [0, 173_804, 481_823] {
+        assert_eq!(
+            Script::new(&p2sh, height).to_highlevel(),
+            HighLevel::PayToScriptHash(&[0xaa; 20])
+        );
+        assert!(matches!(
+            Script::new(&p2wpkh, height).to_highlevel(),
+            HighLevel::PayToWitnessPubkeyHash(_)
+        ));
+    }
+}
+
+#[test]
+fn p2sh_redeem_script_is_the_last_push_of_a_push_only_script() {
+    let mut script_sig = vec![0x00, 2, 0xaa, 0xbb, 3];
+    script_sig.extend([0x51, 0x52, 0xae]);
     assert_eq!(
-        Script::new(&bytes, 1333238400, 173805).to_highlevel(),
-        HighLevel::PayToScriptHash(&[0xaa; 20])
+        Script::new(&script_sig, 800_000).p2sh_redeem_script(),
+        Some(&[0x51, 0x52, 0xae][..])
     );
+    assert_eq!(Script::new(&[], 800_000).p2sh_redeem_script(), None);
+    // OP_DUP is not a push, so this is not a P2SH scriptSig.
     assert_eq!(
-        Script::new(&bytes, 1333238399, 173804).to_highlevel(),
-        HighLevel::Challenge(ChallengeType::Hash160(&[0xaa; 20]))
+        Script::new(&[1, 0xaa, 0x76], 800_000).p2sh_redeem_script(),
+        None
     );
+}
+
+#[test]
+fn witness_program_version_matches_the_bip141_template() {
+    let mut v0 = vec![0x00, 20];
+    v0.extend([1; 20]);
+    let mut v1 = vec![0x51, 32];
+    v1.extend([2; 32]);
+    let mut v16 = vec![0x60, 2, 3, 4];
+    assert_eq!(witness_program_version(&v0), Some(0));
+    assert_eq!(witness_program_version(&v1), Some(1));
+    assert_eq!(witness_program_version(&v16), Some(16));
+    v16.push(5); // push length no longer matches
+    assert_eq!(witness_program_version(&v16), None);
+    assert_eq!(witness_program_version(&[0x00, 1, 7]), None); // program too short
+    assert_eq!(witness_program_version(&[0x4f, 2, 7, 7]), None); // OP_1NEGATE
 }
 
 fn is_address_output(output: HighLevel<'_>) -> bool {
@@ -151,13 +190,13 @@ fn test_address_recognition_requires_the_complete_script() {
     witness.extend_from_slice(&[0xaa; 20]);
     for standard in [p2sh, p2pkh, p2pk, witness] {
         assert!(is_address_output(
-            Script::new(&standard, 1700000000, 800000).to_highlevel()
+            Script::new(&standard, 800000).to_highlevel()
         ));
         for prefix in [&[0x75][..], &[0x61], &[0x51, 0x75]] {
             let mut prefixed = prefix.to_vec();
             prefixed.extend_from_slice(&standard);
             assert!(
-                !is_address_output(Script::new(&prefixed, 1700000000, 800000).to_highlevel()),
+                !is_address_output(Script::new(&prefixed, 800000).to_highlevel()),
                 "prefixed script {} must not receive a standard destination",
                 hex::encode(prefixed)
             );
@@ -165,7 +204,7 @@ fn test_address_recognition_requires_the_complete_script() {
         let mut suffixed = standard;
         suffixed.push(0x61);
         assert!(!is_address_output(
-            Script::new(&suffixed, 1700000000, 800000).to_highlevel()
+            Script::new(&suffixed, 800000).to_highlevel()
         ));
     }
 }
@@ -177,10 +216,10 @@ fn test_failed_multisig_probe_preserves_the_script_cursor() {
         &hex::decode("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798").unwrap(),
     );
     bytes.push(0xac);
-    let script = Script::new(&bytes, 1700000000, 800000);
+    let script = Script::new(&bytes, 800000);
     assert_eq!(script.to_highlevel(), HighLevel::Unknown(script));
     assert_eq!(
-        Script::new(&[0x6a, 0x51], 1700000000, 800000).to_highlevel(),
+        Script::new(&[0x6a, 0x51], 800000).to_highlevel(),
         HighLevel::DataOutput(&[1])
     );
 }
@@ -194,14 +233,14 @@ fn test_nonminimal_signature_scripts_do_not_panic_or_invent_destinations() {
     p2pkh.extend_from_slice(&[0xaa; 20]);
     p2pkh.extend_from_slice(&[0x88, 0xac]);
     for bytes in [p2pk, p2pkh] {
-        let script = Script::new(&bytes, 1700000000, 800000);
+        let script = Script::new(&bytes, 800000);
         assert_eq!(script.to_highlevel(), HighLevel::Unknown(script));
     }
     let mut malformed_hash = vec![0x76, 0xa9, 33];
     malformed_hash.extend_from_slice(&[0x02; 33]);
     malformed_hash.extend_from_slice(&[0x88, 0xac]);
     assert_eq!(
-        Script::new(&malformed_hash, 1700000000, 800000).to_highlevel(),
+        Script::new(&malformed_hash, 800000).to_highlevel(),
         HighLevel::Invalid
     );
 }
@@ -217,18 +256,18 @@ fn test_op_return_pushdata_payloads() {
         let mut bytes = prefix;
         bytes.extend_from_slice(&payload);
         assert_eq!(
-            Script::new(&bytes, 1700000000, 800000).to_highlevel(),
+            Script::new(&bytes, 800000).to_highlevel(),
             HighLevel::DataOutput(&payload)
         );
         bytes.pop();
         assert_eq!(
-            Script::new(&bytes, 1700000000, 800000).to_highlevel(),
+            Script::new(&bytes, 800000).to_highlevel(),
             HighLevel::Invalid
         );
     }
     for bytes in [&[0x6a][..], &[0x6a, 0], &[0x6a, 0x4c, 0]] {
         assert_eq!(
-            Script::new(bytes, 1700000000, 800000).to_highlevel(),
+            Script::new(bytes, 800000).to_highlevel(),
             HighLevel::DataOutput(&[])
         );
     }
@@ -243,30 +282,13 @@ fn test_script_truth_values_use_the_final_sign_bit() {
         assert!(bytes_to_bool(bytes), "{} is true", hex::encode(bytes));
     }
     assert_eq!(
-        Script::new(&[2, 0x80, 0], 1700000000, 800000).to_highlevel(),
+        Script::new(&[2, 0x80, 0], 800000).to_highlevel(),
         HighLevel::Donation
     );
     assert_eq!(
-        Script::new(&[2, 0, 0x80], 1700000000, 800000).to_highlevel(),
+        Script::new(&[2, 0, 0x80], 800000).to_highlevel(),
         HighLevel::Invalid
     );
-}
-
-#[test]
-fn segwit_activation_is_independent_of_the_block_timestamp() {
-    let mut bytes = vec![0x00, 0x14];
-    bytes.extend([7; 20]);
-    // Block timestamps need not increase. A block at activation height can
-    // have a timestamp below the timestamp of mainnet's actual activation block.
-    let script = Script::new(&bytes, 1_503_539_856, 481_824);
-    assert!(matches!(
-        script.to_highlevel(),
-        HighLevel::PayToWitnessPubkeyHash(_)
-    ));
-    assert!(matches!(
-        Script::new(&bytes, 1_503_539_858, 481_823).to_highlevel(),
-        HighLevel::Donation
-    ));
 }
 
 #[test]
@@ -278,7 +300,7 @@ fn multi_push_op_return_preserves_script_encoding() {
         &b"\x6a\x00\x4f\x60"[..], // OP_0, OP_1NEGATE, and OP_16.
     ] {
         assert_eq!(
-            Script::new(bytes, 1_700_000_000, 800_000).to_highlevel(),
+            Script::new(bytes, 800_000).to_highlevel(),
             HighLevel::DataOutputScript(bytes)
         );
     }
@@ -295,7 +317,7 @@ fn op_return_rejects_malformed_and_non_push_tails() {
         &b"\x6a\x01a\x50"[..],                 // OP_RESERVED.
     ] {
         assert_eq!(
-            Script::new(bytes, 1_700_000_000, 800_000).to_highlevel(),
+            Script::new(bytes, 800_000).to_highlevel(),
             HighLevel::Invalid,
             "{}",
             hex::encode(bytes)

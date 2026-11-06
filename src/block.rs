@@ -64,15 +64,9 @@ impl<'a> Block<'a> {
         if self.0.len() < 80 {
             return Err(ParseError::Eof);
         }
-        let header = self.header();
         let mut block_item = visitor.visit_block_begin(*self, height);
-        self.transactions()?.walk(
-            visitor,
-            header.timestamp(),
-            height,
-            &mut block_item,
-            output_items,
-        )?;
+        self.transactions()?
+            .walk(visitor, height, &mut block_item, output_items)?;
         visitor.visit_block_end(*self, height, block_item)
     }
 }

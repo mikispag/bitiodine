@@ -185,7 +185,7 @@ mod spend_rules {
     const SEGWIT_ERA_TIME: u32 = 1_503_539_857;
 
     fn script(bytes: &[u8]) -> Script<'_> {
-        Script::new(bytes, SEGWIT_ERA_TIME, SEGWIT_ACTIVATION_HEIGHT)
+        Script::new(bytes, SEGWIT_ACTIVATION_HEIGHT)
     }
 
     fn witness(version: u8, program: &[u8]) -> CompactAddress {
@@ -219,6 +219,8 @@ mod spend_rules {
         let after_segwit = SpendRules::at(SEGWIT_ERA_TIME, SEGWIT_ACTIVATION_HEIGHT);
         assert!(!before_segwit.spend_is_authenticated(&p2wpkh, &empty));
         assert!(after_segwit.spend_is_authenticated(&p2wpkh, &empty));
+        // Block timestamps need not increase; SegWit activation is by height.
+        assert!(SpendRules::at(0, SEGWIT_ACTIVATION_HEIGHT).spend_is_authenticated(&p2wpkh, &empty));
 
         let before_taproot = SpendRules::at(SEGWIT_ERA_TIME, TAPROOT_ACTIVATION_HEIGHT - 1);
         let after_taproot = SpendRules::at(SEGWIT_ERA_TIME, TAPROOT_ACTIVATION_HEIGHT);
