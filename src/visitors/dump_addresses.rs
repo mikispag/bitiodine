@@ -4,12 +4,13 @@ use crate::address::Address;
 use crate::block::Block;
 use crate::error::{ParseResult, Result};
 use crate::hash160::Hash160;
-use crate::script::HighLevel;
+use crate::script::{is_valid_pubkey, HighLevel};
 use crate::transactions::TransactionOutput;
 use crate::visitors::BlockChainVisitor;
 
 /// Emits output addresses and P2PKH-form identifiers for public keys in P2PK
-/// and bare multisig scripts. Public-key identifiers are not script destinations.
+/// and bare multisig scripts. Multisig pushes that are not well-formed public
+/// keys are skipped. Public-key identifiers are not script destinations.
 pub struct DumpAddresses<'w> {
     writer: Box<dyn Write + 'w>,
     error: Option<io::Error>,
@@ -61,8 +62,11 @@ impl BlockChainVisitor for DumpAddresses<'_> {
             HighLevel::PayToScriptHash(pkh) => {
                 Some(vec![Address::from_hash160(Hash160::from_slice(pkh), 0x05)])
             }
+            // A multisig script qualifies once enough pushes are valid keys;
+            // the remaining pushes can be arbitrary data and get no identifier.
             HighLevel::PayToMultisig(_, pks) => Some(
                 pks.iter()
+                    .filter(|pk| is_valid_pubkey(pk))
                     .map(|pk| Address::from_pubkey(pk, 0x00))
                     .collect(),
             ),

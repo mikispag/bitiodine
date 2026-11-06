@@ -202,6 +202,29 @@ fn p2pk_and_multisig_export_public_key_identifiers() {
 }
 
 #[test]
+fn multisig_data_pushes_do_not_export_identifiers() {
+    // 1-of-2 bare multisig where the second "key" is a 33-byte data chunk,
+    // as in data-carrying multisig outputs.
+    let pk = pubkey();
+    let mut data_chunk = vec![0x05];
+    data_chunk.extend([0x42; 32]);
+    let mut multisig = vec![0x51, 33];
+    multisig.extend(&pk);
+    multisig.push(33);
+    multisig.extend(&data_chunk);
+    multisig.extend([0x52, 0xae]);
+    let bytes = coinbase(&[(13, &multisig)]);
+    let mut rows = Vec::new();
+    {
+        let mut visitor = DumpAddresses::with_writer(&mut rows);
+        assert!(walk_transaction(&mut visitor, &bytes).is_empty());
+        visitor.done().unwrap();
+    }
+    let identifier = Address::from_pubkey(&pk, 0x00);
+    assert_eq!(String::from_utf8(rows).unwrap(), format!("{identifier}\n"));
+}
+
+#[test]
 fn p2sh_outputs_reach_balance_and_cluster_visitors() {
     let mut script = vec![0xa9, 0x14];
     script.extend([3; 20]);
