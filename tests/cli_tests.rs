@@ -216,6 +216,58 @@ fn failed_traversal_preserves_existing_csv() {
     }
 }
 
+#[test]
+fn traversal_failures_after_preparing_the_csv_remove_its_temporary_file() {
+    let fixture = Fixture::new();
+    fixture.valid_chain();
+    // Corrupt the first block's transaction count: indexing succeeds and the
+    // walk fails after the temporary CSV has been created.
+    let blocks = fixture.0.join("blk00000.dat");
+    let mut records = fs::read(&blocks).unwrap();
+    records[8 + 80] = 0xfd;
+    fs::write(&blocks, records).unwrap();
+    let directory = fixture.0.join("results");
+    fs::create_dir(&directory).unwrap();
+    let path = directory.join("results.csv");
+    for action in ["clusterizer", "dump-balances"] {
+        fs::write(&path, b"previous results\n").unwrap();
+        let output = fixture.run(action, &path);
+        assert!(!output.status.success(), "{action}: {output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("Selected"), "walk did not start: {stderr}");
+        assert_eq!(fs::read(&path).unwrap(), b"previous results\n");
+        let leftovers: Vec<_> = fs::read_dir(&directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name.to_string_lossy().starts_with(".bitiodine-"))
+            .collect();
+        assert!(leftovers.is_empty(), "{action}: {leftovers:?}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn unwritable_output_directories_fail_before_traversal() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new();
+    fixture.valid_chain();
+    let directory = fixture.0.join("read-only");
+    fs::create_dir(&directory).unwrap();
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o555)).unwrap();
+    let writable = fs::write(directory.join("probe"), b"").is_ok();
+    if !writable {
+        // Permission bits do not bind root, so only check as an ordinary user.
+        for action in ["clusterizer", "dump-balances"] {
+            let output = fixture.run(action, &directory.join("results.csv"));
+            assert!(!output.status.success(), "{action}: {output:?}");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(stderr.contains("cannot create output"), "{stderr}");
+            assert!(!stderr.contains("Selected"), "walk started: {stderr}");
+        }
+    }
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 #[cfg(unix)]
 #[test]
 fn csv_outputs_must_not_overwrite_input_data() {

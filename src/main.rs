@@ -172,6 +172,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 PathBuf::from(path)
             });
             output::validate_state_dir(&cli.blocks_dir, &cli.output, &state_dir)?;
+            // Create the temporary CSV now so an unwritable destination fails
+            // before the walk rather than after it.
+            let prepared = output::prepare(&cli.blocks_dir, &cli.output)?;
             let mut store =
                 ClusterStore::open_with_memory_limit(&state_dir, budget.unwrap().sqlite)?;
             info!("Using resumable cluster state in {}", state_dir.display());
@@ -180,13 +183,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             visitor.done()?;
             info!("Writing clustered addresses to {}", cli.output.display());
             output::validate_state_dir(&cli.blocks_dir, &cli.output, &state_dir)?;
-            output::write_atomic(&cli.blocks_dir, &cli.output, |writer| {
-                store.write_csv(writer).map_err(std::io::Error::other)
-            })?;
+            prepared.publish(|writer| store.write_csv(writer).map_err(std::io::Error::other))?;
             bitiodine::metrics::log_peak_rss("after clusterizer");
             info!("Done!");
         }
         Action::DumpBalances => {
+            let prepared = output::prepare(&cli.blocks_dir, &cli.output)?;
             let mut visitor = DumpBalances::new();
             chain.walk(&mut visitor)?;
             let (count, _) = visitor.done()?;
@@ -194,9 +196,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 "Writing {count} address balances to {}",
                 cli.output.display()
             );
-            output::write_atomic(&cli.blocks_dir, &cli.output, |writer| {
-                visitor.write_csv(writer)
-            })?;
+            prepared.publish(|writer| visitor.write_csv(writer))?;
             bitiodine::metrics::log_peak_rss("after dump-balances");
             info!("Done!");
         }

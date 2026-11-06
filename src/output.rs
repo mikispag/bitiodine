@@ -149,12 +149,19 @@ impl Drop for PendingOutput {
     }
 }
 
-/// Publishes a complete CSV only after writing, flushing and syncing succeed.
-pub fn write_atomic(
-    blocks_dir: &Path,
-    output: &Path,
-    write: impl FnOnce(&mut BufWriter<File>) -> io::Result<()>,
-) -> io::Result<()> {
+/// A validated CSV destination whose temporary file already exists. Created
+/// before traversal so an unwritable output directory fails at once instead of
+/// after hours of work; `publish` later writes the CSV and moves it into place.
+pub struct PreparedOutput {
+    // Declared before `temporary` so the file is closed before its removal.
+    writer: BufWriter<File>,
+    temporary: PendingOutput,
+    blocks_dir: PathBuf,
+    destination: PathBuf,
+}
+
+/// Validates the destination and creates a temporary file beside it.
+pub fn prepare(blocks_dir: &Path, output: &Path) -> io::Result<PreparedOutput> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let destination = validate_output(blocks_dir, output)?;
     let parent = destination.parent().unwrap();
@@ -167,19 +174,46 @@ pub fn write_atomic(
         match OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(file) => break (PendingOutput(path), file),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
+            Err(error) => {
+                return Err(io::Error::new(
+                    error.kind(),
+                    format!("cannot create output in {}: {error}", parent.display()),
+                ))
+            }
         }
     };
-    let mut writer = BufWriter::new(file);
-    if let Ok(metadata) = fs::metadata(&destination) {
-        writer.get_ref().set_permissions(metadata.permissions())?;
+    Ok(PreparedOutput {
+        writer: BufWriter::new(file),
+        temporary,
+        blocks_dir: blocks_dir.to_path_buf(),
+        destination,
+    })
+}
+
+impl PreparedOutput {
+    /// Publishes a complete CSV only after writing, flushing and syncing succeed.
+    pub fn publish(
+        mut self,
+        write: impl FnOnce(&mut BufWriter<File>) -> io::Result<()>,
+    ) -> io::Result<()> {
+        if let Ok(metadata) = fs::metadata(&self.destination) {
+            self.writer
+                .get_ref()
+                .set_permissions(metadata.permissions())?;
+        }
+        write(&mut self.writer)?;
+        self.writer.flush()?;
+        self.writer.get_ref().sync_all()?;
+        let Self {
+            writer,
+            temporary,
+            blocks_dir,
+            destination,
+        } = self;
+        drop(writer);
+        validate_output(&blocks_dir, &destination)?;
+        fs::rename(&temporary.0, &destination)
     }
-    write(&mut writer)?;
-    writer.flush()?;
-    writer.get_ref().sync_all()?;
-    drop(writer);
-    validate_output(blocks_dir, &destination)?;
-    fs::rename(&temporary.0, &destination)
 }
 
 #[cfg(test)]
@@ -193,7 +227,10 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         let output = directory.join("results.csv");
         fs::write(&output, b"previous results\n").unwrap();
-        let result = write_atomic(&directory, &output, |writer| {
+        let prepared = prepare(&directory, &output).unwrap();
+        // The temporary file exists from preparation until publication.
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 2);
+        let result = prepared.publish(|writer| {
             writer.write_all(b"partial replacement\n")?;
             writer.flush()?;
             Err(io::Error::other("injected write failure"))
