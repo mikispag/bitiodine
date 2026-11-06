@@ -12,9 +12,70 @@ use crate::block::Block;
 use crate::error::Result;
 use crate::hash::ZERO_HASH;
 use crate::hash160::Hash160;
-use crate::script::HighLevel;
+use crate::script::{witness_program_version, HighLevel, Script};
 use crate::transactions::{Transaction, TransactionInput, TransactionOutput};
 use crate::visitors::BlockChainVisitor;
+
+/// Header time from which BIP16 (P2SH) rules applied to a block.
+pub const BIP16_ACTIVATION_TIME: u32 = 1_333_238_400;
+/// First mainnet block height with BIP141 (SegWit) rules.
+pub const SEGWIT_ACTIVATION_HEIGHT: u64 = 481_824;
+/// First mainnet block height with BIP341 (Taproot) rules.
+pub const TAPROOT_ACTIVATION_HEIGHT: u64 = 709_632;
+
+/// Script rules in force in the block that spends an output.
+///
+/// Before a soft fork activated, outputs of its form could be spent without
+/// the owner's key, so such spends are no evidence of common ownership.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SpendRules {
+    pub p2sh: bool,
+    pub segwit: bool,
+    pub taproot: bool,
+}
+
+impl SpendRules {
+    /// Rules for a mainnet block with the given header time and height.
+    pub fn at(timestamp: u32, height: u64) -> Self {
+        Self {
+            p2sh: timestamp >= BIP16_ACTIVATION_TIME,
+            segwit: height >= SEGWIT_ACTIVATION_HEIGHT,
+            taproot: height >= TAPROOT_ACTIVATION_HEIGHT,
+        }
+    }
+
+    /// Whether spending an output paid to `address` with `script_sig` had to
+    /// satisfy the output's key or redeem script under these rules.
+    pub fn spend_is_authenticated(
+        &self,
+        address: &CompactAddress,
+        script_sig: &Script<'_>,
+    ) -> bool {
+        match address.witness_program() {
+            Some((0, _)) => self.segwit,
+            Some((1, program)) if program.len() == 32 => self.taproot,
+            // Other witness versions and lengths remain unencumbered.
+            Some(_) => false,
+            None if address.is_p2sh() => {
+                if !self.p2sh {
+                    return false;
+                }
+                match script_sig
+                    .p2sh_redeem_script()
+                    .and_then(witness_program_version)
+                {
+                    // P2SH-wrapped SegWit evaluates as true without a signature
+                    // until SegWit activates.
+                    Some(0) => self.segwit,
+                    // Taproot rules do not apply to wrapped programs (BIP341).
+                    Some(_) => false,
+                    None => true,
+                }
+            }
+            None => true,
+        }
+    }
+}
 
 pub struct Clusterizer {
     pub clusters: DisjointSet<CompactAddress>,
@@ -232,7 +293,7 @@ pub(crate) fn output_address(txout: TransactionOutput<'_>) -> Option<CompactAddr
 }
 
 impl BlockChainVisitor for Clusterizer {
-    type BlockItem = ();
+    type BlockItem = SpendRules;
     type TransactionItem = TransactionClusterState;
     type OutputItem = CompactAddress;
     type DoneItem = (usize, String);
@@ -243,7 +304,9 @@ impl BlockChainVisitor for Clusterizer {
         }
     }
 
-    fn visit_block_begin<'a>(&mut self, _block: Block<'a>, _height: u64) {}
+    fn visit_block_begin<'a>(&mut self, block: Block<'a>, height: u64) -> SpendRules {
+        SpendRules::at(block.header().timestamp(), height)
+    }
 
     fn visit_transaction_begin(
         &mut self,
@@ -258,7 +321,7 @@ impl BlockChainVisitor for Clusterizer {
     fn visit_transaction_input<'a>(
         &mut self,
         txin: TransactionInput<'a>,
-        _block_item: &mut Self::BlockItem,
+        rules: &mut Self::BlockItem,
         tx_item: &mut Self::TransactionItem,
         output_item: Option<Self::OutputItem>,
     ) {
@@ -267,6 +330,10 @@ impl BlockChainVisitor for Clusterizer {
             return;
         }
         if let Some(address) = output_item {
+            // A spend that needed no signature says nothing about ownership.
+            if !rules.spend_is_authenticated(&address, &txin.script) {
+                return;
+            }
             if !tx_item.input_addresses.contains(&address) {
                 tx_item.input_addresses.push(address);
             }
@@ -276,7 +343,7 @@ impl BlockChainVisitor for Clusterizer {
     fn visit_transaction_output<'a>(
         &mut self,
         txout: TransactionOutput<'a>,
-        _block_item: &mut (),
+        _block_item: &mut Self::BlockItem,
         transaction_item: &mut Self::TransactionItem,
     ) -> Option<Self::OutputItem> {
         transaction_item.output_values.push(txout.value);

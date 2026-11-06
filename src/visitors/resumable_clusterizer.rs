@@ -6,7 +6,7 @@ use crate::cluster_store::ClusterStore;
 use crate::error::{ParseError, ParseResult, Result};
 use crate::hash::ZERO_HASH;
 use crate::transactions::{Transaction, TransactionInput, TransactionOutput};
-use crate::visitors::clusterizer::{is_coinjoin, output_address};
+use crate::visitors::clusterizer::{is_coinjoin, output_address, SpendRules};
 use crate::visitors::BlockChainVisitor;
 
 /// Clusters through a persistent store, retaining only the current transaction in RAM.
@@ -38,19 +38,20 @@ impl<'store> ResumableClusterizer<'store> {
 }
 
 impl BlockChainVisitor for ResumableClusterizer<'_> {
-    type BlockItem = ();
+    type BlockItem = SpendRules;
     type TransactionItem = ResumableTransaction;
     type OutputItem = ();
     type DoneItem = ();
 
-    fn visit_block_begin<'a>(&mut self, block: Block<'a>, height: u64) {
+    fn visit_block_begin<'a>(&mut self, block: Block<'a>, height: u64) -> SpendRules {
         self.error = self
             .store
             .begin_block(height, block.header().cur_hash())
             .err();
+        SpendRules::at(block.header().timestamp(), height)
     }
 
-    fn visit_transaction_begin(&mut self, _block: &mut ()) -> Self::TransactionItem {
+    fn visit_transaction_begin(&mut self, _rules: &mut SpendRules) -> Self::TransactionItem {
         ResumableTransaction {
             input_addresses: SmallVec::new(),
             output_values: SmallVec::new(),
@@ -62,7 +63,7 @@ impl BlockChainVisitor for ResumableClusterizer<'_> {
     fn visit_transaction_input<'a>(
         &mut self,
         txin: TransactionInput<'a>,
-        _block: &mut (),
+        rules: &mut SpendRules,
         transaction: &mut Self::TransactionItem,
         _output: Option<()>,
     ) {
@@ -70,7 +71,12 @@ impl BlockChainVisitor for ResumableClusterizer<'_> {
             return;
         }
         match self.store.spend(txin.prev_hash, txin.prev_index) {
-            Ok(Some(address)) if !transaction.input_addresses.contains(&address) => {
+            // The UTXO is consumed either way; only a spend that needed a
+            // signature is ownership evidence.
+            Ok(Some(address))
+                if rules.spend_is_authenticated(&address, &txin.script)
+                    && !transaction.input_addresses.contains(&address) =>
+            {
                 transaction.input_addresses.push(address);
             }
             Ok(_) => {}
@@ -81,7 +87,7 @@ impl BlockChainVisitor for ResumableClusterizer<'_> {
     fn visit_transaction_output<'a>(
         &mut self,
         txout: TransactionOutput<'a>,
-        _block: &mut (),
+        _rules: &mut SpendRules,
         transaction: &mut Self::TransactionItem,
     ) -> Option<()> {
         if self.error.is_none() {
@@ -100,7 +106,7 @@ impl BlockChainVisitor for ResumableClusterizer<'_> {
     fn visit_transaction_end<'a>(
         &mut self,
         tx: Transaction<'a>,
-        _block: &mut (),
+        _rules: &mut SpendRules,
         mut transaction: Self::TransactionItem,
     ) {
         if self.error.is_some() {
@@ -121,7 +127,7 @@ impl BlockChainVisitor for ResumableClusterizer<'_> {
         &mut self,
         _block: Block<'a>,
         _height: u64,
-        _block_item: (),
+        _rules: SpendRules,
     ) -> ParseResult<()> {
         match self.error.take() {
             Some(error) => Err(error),

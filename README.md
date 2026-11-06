@@ -111,7 +111,7 @@ An explicit tip and every ancestor must be present in the selected files. Combin
 | `donation-finder` | Streams positive-value donation or unknown-script candidates | Stdout CSV (`<txid>,<vout>,<satoshis>,<script_hex>`), no header |
 | `merkle` | Verifies each selected block's transaction Merkle root against its header | Logs |
 
-P2PK outputs and bare-multisig participants use P2PKH identifiers derived from their public keys when extracting addresses; those identifiers are not the original output scripts. Bare-multisig pushes that are not well-formed public keys (for example, data chunks in data-carrying multisig) get no identifier. Balances and clustering recognize exact standard single-destination scripts and P2PK; they do not assign one owner to bare multisig. The mainnet genesis coinbase is excluded from balances, and overwritten historical duplicate coinbases replace prior UTXO credits. A successful command exits zero only after traversal, visitor finalization, and output flushing succeed; failed runs may have streamed partial stdout or updated visitor state.
+P2PK outputs and bare-multisig participants use P2PKH identifiers derived from their public keys when extracting addresses; those identifiers are not the original output scripts. Bare-multisig pushes that are not well-formed public keys (for example, data chunks in data-carrying multisig) get no identifier. Balances and clustering recognize exact standard single-destination scripts and P2PK; they do not assign one owner to bare multisig. Clustering only uses inputs whose spend had to satisfy the output's key or script under the rules of the spending block: P2SH from BIP16 (block time 1333238400 or later), native and P2SH-wrapped SegWit v0 from height 481,824, and Taproot from height 709,632. Earlier spends of those output types, and spends of other witness versions, required no signature and are ignored. The mainnet genesis coinbase is excluded from balances, and overwritten historical duplicate coinbases replace prior UTXO credits. A successful command exits zero only after traversal, visitor finalization, and output flushing succeed; failed runs may have streamed partial stdout or updated visitor state.
 
 Cluster and balance CSV rows are unsorted. Cluster representatives are canonical address identifiers selected using the address type's ordering; only addresses participating in eligible merges appear in the cluster export. Balance rows have no header, omit zero balances, and format BTC values to eight decimal places. Their `identifier_hash` is the Base58 address's HASH160, or forty zero hex digits for witness addresses; use the full address column as the identifier.
 
@@ -121,7 +121,7 @@ Finder output uses zero-based transaction output indexes. For bare `OP_RETURN` o
 
 ### Resuming and Recovering from Reorgs
 
-The default clustering action creates `clusters.csv.state/` beside `clusters.csv`. Use `--checkpoint-dir` to keep the working database at a different location or to reuse it when changing the CSV destination. The directory contains `clusters.sqlite3`, SQLite journal files, and an exclusive `cluster.lock`; one process can use a state directory at a time.
+The default clustering action creates `clusters.csv.state/` beside `clusters.csv`. Use `--checkpoint-dir` to keep the working database at a different location or to reuse it when changing the CSV destination. The directory contains `clusters.sqlite3`, SQLite journal files, and an exclusive `cluster.lock`; one process can use a state directory at a time. The database records the clustering heuristic version; state written under different clustering or classification rules is rejected with an "incompatible network or clustering heuristic" error instead of being resumed. Delete the state directory to rebuild it.
 
 Each block's UTXO changes, cluster merges, undo records, and height/hash are committed together after parsing and source checks succeed. An interrupted or failed block is rolled back, while earlier committed blocks remain available for the next run. CSV export happens after traversal and is published atomically, so an export failure preserves the previous CSV and does not discard completed database work.
 
@@ -294,6 +294,7 @@ flowchart LR
     end
 
     subgraph Filter["Heuristic Filters"]
+        AUTH{"Spend Rules Filter<br/>Signature required at spending block?"}
         CJ{"Equal-Value Filter<br/>3+ identical nonzero outputs?"}
     end
 
@@ -308,7 +309,9 @@ flowchart LR
         CLUSTER["CSV: Address, Representative Address"]
     end
 
-    Inputs --> CJ
+    Inputs --> AUTH
+    AUTH -- "No (Drop input)" --> DROP["Ignore Input"]
+    AUTH -- "Yes" --> CJ
     CJ -- "Yes (Skip heuristic)" --> SKIP["Skip Transaction<br/>(Preserve Independence)"]
     CJ -- "No (Merge heuristic)" --> MAKE
     MAKE --> FIND

@@ -8,6 +8,7 @@ use bitiodine::hash::Hash;
 use bitiodine::hash160::Hash160;
 use bitiodine::script::Script;
 use bitiodine::transactions::{Transaction, TransactionInput, TransactionOutput};
+use bitiodine::visitors::clusterizer::SpendRules;
 use bitiodine::visitors::{
     BlockChainVisitor, Clusterizer, DataOutputFinder, DonationFinder, DumpAddresses, DumpBalances,
     DumpTxHashes,
@@ -72,12 +73,13 @@ fn p2pk_inputs_participate_in_clustering() {
     p2pkh.extend([0x88, 0xac]);
 
     let mut visitor = Clusterizer::new();
-    let mut transaction = visitor.visit_transaction_begin(&mut ());
+    let mut rules = SpendRules::at(1_700_000_000, 800_000);
+    let mut transaction = visitor.visit_transaction_begin(&mut rules);
     let a = visitor
-        .visit_transaction_output(output(&p2pk, 50), &mut (), &mut transaction)
+        .visit_transaction_output(output(&p2pk, 50), &mut rules, &mut transaction)
         .expect("P2PK must retain its public-key identifier for co-spend analysis");
     let b = visitor
-        .visit_transaction_output(output(&p2pkh, 50), &mut (), &mut transaction)
+        .visit_transaction_output(output(&p2pkh, 50), &mut rules, &mut transaction)
         .unwrap();
     assert_eq!(a, CompactAddress::from_hash160(&Hash160::from_data(&pk), 0));
 
@@ -89,9 +91,9 @@ fn p2pk_inputs_participate_in_clustering() {
         sequence_no: u32::MAX,
         slice: &[],
     };
-    let mut transaction = visitor.visit_transaction_begin(&mut ());
-    visitor.visit_transaction_input(input, &mut (), &mut transaction, Some(a));
-    visitor.visit_transaction_input(input, &mut (), &mut transaction, Some(b));
+    let mut transaction = visitor.visit_transaction_begin(&mut rules);
+    visitor.visit_transaction_input(input, &mut rules, &mut transaction, Some(a));
+    visitor.visit_transaction_input(input, &mut rules, &mut transaction, Some(b));
     visitor.visit_transaction_end(
         Transaction {
             version: 1,
@@ -101,7 +103,7 @@ fn p2pk_inputs_participate_in_clustering() {
             lock_time: 0,
             slice: &[],
         },
-        &mut (),
+        &mut rules,
         transaction,
     );
     assert!(visitor.clusters.find(&a).is_some());
@@ -241,9 +243,10 @@ fn p2sh_outputs_reach_balance_and_cluster_visitors() {
     assert_eq!(balances.balances.get(&expected), Some(&17));
 
     let mut clusters = Clusterizer::new();
-    let mut transaction = clusters.visit_transaction_begin(&mut ());
+    let mut rules = clusters.visit_block_begin(Block(&header), 800_000);
+    let mut transaction = clusters.visit_transaction_begin(&mut rules);
     assert_eq!(
-        clusters.visit_transaction_output(output(&script, 17), &mut (), &mut transaction),
+        clusters.visit_transaction_output(output(&script, 17), &mut rules, &mut transaction),
         Some(expected)
     );
 }

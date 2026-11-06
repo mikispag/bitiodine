@@ -67,27 +67,35 @@ impl<'a> Script<'a> {
         self.slice
     }
 
+    /// Returns the last push of a push-only script, which for a P2SH spend's
+    /// scriptSig is the serialized redeem script. `None` if the script is
+    /// empty or contains a non-push opcode.
+    pub fn p2sh_redeem_script(&self) -> Option<&'a [u8]> {
+        let mut iter = self.iter();
+        let mut last = None;
+        loop {
+            match iter.read() {
+                Ok(OP_PUSH(data)) => last = Some(data),
+                Err(ParseError::Eof) => return last,
+                _ => return None,
+            }
+        }
+    }
+
     pub fn to_highlevel(&self) -> HighLevel<'a> {
         // Assign destinations only from complete standard scripts. Prefix removal
         // belongs to the heuristic fallback and can change spending conditions.
         let script_slice = self.slice;
 
         // Check for SegWit v0-v16 Witness Programs (BIP-141 / BIP-341 / BIP-350)
-        // Format: OP_n <push len 2..40> <data>
-        if self.height >= 481_824 && script_slice.len() >= 4 && script_slice.len() <= 42 {
-            let first = script_slice[0];
-            let push_len = script_slice[1] as usize;
-            if (first == 0x00 || (0x51..=0x60).contains(&first))
-                && script_slice.len() == 2 + push_len
-            {
-                if let Ok(w) = WitnessProgram::from_scriptpubkey(script_slice, Network::Bitcoin) {
-                    match (first, push_len) {
-                        (0x00, 20) => return HighLevel::PayToWitnessPubkeyHash(w),
-                        (0x00, 32) => return HighLevel::PayToWitnessScriptHash(w),
-                        (0x51, 32) => return HighLevel::PayToWitnessTaproot(w),
-                        _ => return HighLevel::PayToWitnessGeneral(w),
-                    }
-                }
+        if self.height >= 481_824 {
+            if let Some(w) = parse_witness_program(script_slice) {
+                return match (script_slice[0], script_slice[1]) {
+                    (0x00, 20) => HighLevel::PayToWitnessPubkeyHash(w),
+                    (0x00, 32) => HighLevel::PayToWitnessScriptHash(w),
+                    (0x51, 32) => HighLevel::PayToWitnessTaproot(w),
+                    _ => HighLevel::PayToWitnessGeneral(w),
+                };
             }
         }
 
@@ -410,6 +418,27 @@ pub fn bytes_to_u32(slice: &[u8]) -> ParseResult<u32> {
     } else {
         Err(ParseError::Invalid)
     }
+}
+
+/// Returns the version of a BIP141 witness program template: a version opcode
+/// (OP_0 or OP_1..OP_16) followed by exactly one 2-40 byte push. The program
+/// is not checked against version-specific length rules.
+pub fn witness_program_version(script: &[u8]) -> Option<u8> {
+    let (&opcode, rest) = script.split_first()?;
+    let version = match opcode {
+        0x00 => 0,
+        0x51..=0x60 => opcode - 0x50,
+        _ => return None,
+    };
+    let (&len, program) = rest.split_first()?;
+    ((2..=40).contains(&len) && program.len() == len as usize).then_some(version)
+}
+
+/// Parses a witness program that is valid for its version (version 0 programs
+/// must be 20 or 32 bytes).
+fn parse_witness_program(script: &[u8]) -> Option<WitnessProgram> {
+    witness_program_version(script)?;
+    WitnessProgram::from_scriptpubkey(script, Network::Bitcoin).ok()
 }
 
 pub fn is_valid_pubkey(pubkey: &[u8]) -> bool {

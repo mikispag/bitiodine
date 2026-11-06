@@ -147,17 +147,27 @@ impl CompactAddress {
             Hash160(hash)
         }
     }
+
+    /// Whether this is a P2SH (`3...`) address.
+    pub fn is_p2sh(&self) -> bool {
+        self.0[0] == 0x05
+    }
+
+    /// Witness version and program, or `None` for Base58 addresses.
+    pub fn witness_program(&self) -> Option<(u8, &[u8])> {
+        let tag = self.0[0];
+        (tag >= WITNESS_TAG).then(|| (tag & 0x1F, &self.0[1..1 + self.0[41] as usize]))
+    }
 }
 
 impl fmt::Display for CompactAddress {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let tag = self.0[0];
-        if tag < WITNESS_TAG {
-            let hash = self.0[1..21].try_into().expect("20-byte HASH160 slice");
-            fmt_base58(formatter, tag, hash)
-        } else {
-            let len = self.0[41] as usize;
-            fmt_witness(formatter, tag & 0x1F, &self.0[1..1 + len])
+        match self.witness_program() {
+            Some((version, program)) => fmt_witness(formatter, version, program),
+            None => {
+                let hash = self.0[1..21].try_into().expect("20-byte HASH160 slice");
+                fmt_base58(formatter, self.0[0], hash)
+            }
         }
     }
 }
