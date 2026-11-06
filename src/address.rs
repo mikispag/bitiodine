@@ -27,27 +27,33 @@ impl Default for Address {
     }
 }
 
+/// Writes a mainnet Base58Check address. `Address` and `CompactAddress` share
+/// this encoder so both render the same string for the same destination.
+fn fmt_base58(formatter: &mut fmt::Formatter<'_>, version: u8, hash: &[u8; 20]) -> fmt::Result {
+    let mut v = [0u8; 25];
+    v[0] = version;
+    v[1..21].copy_from_slice(hash);
+    let checksum = Hash::from_data(&v[0..21]);
+    v[21..25].copy_from_slice(&checksum[0..4]);
+    formatter.write_str(&bs58::encode(&v).into_string())
+}
+
+/// Writes a mainnet Bech32/Bech32m witness address, or `invalid_witness_v<N>`
+/// when the version and program cannot be encoded. Shared like `fmt_base58`.
+fn fmt_witness(formatter: &mut fmt::Formatter<'_>, version: u8, program: &[u8]) -> fmt::Result {
+    if let Ok(u5_ver) = u5::try_from_u8(version) {
+        if let Ok(wp) = WitnessProgram::new(u5_ver, program.to_vec(), Network::Bitcoin) {
+            return formatter.write_str(&wp.to_address());
+        }
+    }
+    write!(formatter, "invalid_witness_v{}", version)
+}
+
 impl fmt::Display for Address {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Address::Base58 { version, hash } => {
-                let mut v = [0u8; 25];
-                v[0] = *version;
-                v[1..21].copy_from_slice(hash);
-                let h = Hash::from_data(&v[0..21]);
-                v[21..25].copy_from_slice(&h[0..4]);
-                let s = bs58::encode(&v).into_string();
-                formatter.write_str(&s)
-            }
-            Address::Witness { version, program } => {
-                if let Ok(u5_ver) = u5::try_from_u8(*version) {
-                    if let Ok(wp) = WitnessProgram::new(u5_ver, program.to_vec(), Network::Bitcoin)
-                    {
-                        return formatter.write_str(&wp.to_address());
-                    }
-                }
-                write!(formatter, "invalid_witness_v{}", version)
-            }
+            Address::Base58 { version, hash } => fmt_base58(formatter, *version, hash),
+            Address::Witness { version, program } => fmt_witness(formatter, *version, program),
         }
     }
 }
@@ -147,23 +153,11 @@ impl fmt::Display for CompactAddress {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag = self.0[0];
         if tag < WITNESS_TAG {
-            let mut v = [0u8; 25];
-            v[0] = tag;
-            v[1..21].copy_from_slice(&self.0[1..21]);
-            let h = Hash::from_data(&v[0..21]);
-            v[21..25].copy_from_slice(&h[0..4]);
-            formatter.write_str(&bs58::encode(&v).into_string())
+            let hash = self.0[1..21].try_into().expect("20-byte HASH160 slice");
+            fmt_base58(formatter, tag, hash)
         } else {
-            let witness_version = tag & 0x1F;
             let len = self.0[41] as usize;
-            if let Ok(u5_ver) = u5::try_from_u8(witness_version) {
-                if let Ok(wp) =
-                    WitnessProgram::new(u5_ver, self.0[1..1 + len].to_vec(), Network::Bitcoin)
-                {
-                    return formatter.write_str(&wp.to_address());
-                }
-            }
-            write!(formatter, "invalid_witness_v{}", witness_version)
+            fmt_witness(formatter, tag & 0x1F, &self.0[1..1 + len])
         }
     }
 }
