@@ -12,7 +12,11 @@ use crate::hash::{Hash, ZERO_HASH};
 use crate::header::BlockHeader;
 use crate::visitors::{BlockChainVisitor, ResumableClusterizer};
 
-pub type OutputMap<T> = HashMap<Hash, crate::transactions::OutputItemList<T>>;
+/// Retained output items by transaction ID: the hottest map in a walk (one
+/// lookup per input, one insert per transaction). Txids are uniformly random,
+/// so the fast foldhash hasher loses nothing over SipHash here.
+pub type OutputMap<T> =
+    HashMap<Hash, crate::transactions::OutputItemList<T>, foldhash::fast::RandomState>;
 
 struct BlockFile {
     path: PathBuf,
